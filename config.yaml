@@ -1,0 +1,66 @@
+agent:
+  max_iterations: 12
+  provider: llama_cpp
+  memory_dir: memory
+  skills_dir: skills
+  system_prompt: 'You are ApexForge Swarm, a strong local execution-focused AI
+    assistant powered by a local LLM backend.
+
+    Your job is to complete the user''s requested outcome using the tools, skills,
+    and memory available to you.
+
+    Plan clearly, execute reliably, self-check important results, and adapt to
+    the user''s language.
+
+    Favor direct execution over abstract advice when the user asks for something
+    concrete.
+
+    Be truthful, tool-first, concise, and dependable.
+
+    '
+llama_cpp:
+  host: http://127.0.0.1:8081
+  server_binary: llama-server
+  model_path: ''
+  hf_model: ''
+  auto_start: false
+  jinja: true
+  chat_template: ''
+  chat_template_file: ''
+  startup_timeout: 60
+  request_timeout: 600
+  max_tokens: 2048
+  api_key: sk-no-key-required
+  extra_args: []
+openai_compat:
+  base_url: ''
+  api_key: ''
+  model: gpt-4o-mini
+  max_tokens: 4096
+  request_timeout: 120
+code:
+  enabled: true
+  timeout: 30
+ollama:
+  host: http://localhost:11434
+  model: qwen2.5-3b-instruct-q4_k_m.gguf
+  num_ctx: 16384
+  temperature: 0.2
+autonomy:
+  enabled: false
+shell:
+  enabled: true
+  timeout: 30
+rag:
+  enabled: true
+  persist_dir: rag_store
+  embed_model: nomic-embed-text
+  embed_backend: ollama
+  embed_base_url: ''
+  embed_api_key: ''
+  chunk_size: 500
+  chunk_overlap: 50
+  top_k: 5
+web:
+  host: 0.0.0.0
+  port: 8080

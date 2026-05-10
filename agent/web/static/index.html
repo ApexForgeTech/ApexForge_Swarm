@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ApexForge Swarm</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0d;--bg2:#121212;--bg3:#1a1a1a;--bg4:#222;
+  --border:#252525;--border2:#2e2e2e;
+  --accent:#7c3aed;--accent-h:#6d28d9;--accent2:#06b6d4;
+  --text:#ddd;--text2:#888;--text3:#555;
+  --green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;
+  --sidebar-w:280px;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;display:flex;overflow:hidden;font-size:14px}
+
+/* ── Sidebar ── */
+#sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width .2s,min-width .2s}
+#sidebar.collapsed{width:0;min-width:0}
+.sb-logo{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.sb-logo-text{font-size:15px;font-weight:700;color:var(--accent2)}
+.sb-logo-sub{color:var(--text3);font-size:12px;margin-left:auto}
+.sb-body{flex:1;overflow-y:auto;overflow-x:hidden}
+.sb-body::-webkit-scrollbar{width:4px}
+.sb-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.sb-section{padding:10px 14px 6px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;display:flex;align-items:center;justify-content:space-between}
+.sb-section button{background:none;border:none;color:var(--accent2);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px}
+.sb-section button:hover{background:var(--bg3)}
+
+label{display:block;font-size:11px;color:var(--text2);margin:8px 14px 3px}
+select,input[type=number],textarea.sys-prompt{
+  width:calc(100% - 28px);margin:0 14px;background:var(--bg3);border:1px solid var(--border2);
+  color:var(--text);padding:7px 9px;border-radius:6px;font-size:12px;outline:none;font-family:inherit
+}
+select:focus,input:focus,textarea:focus{border-color:var(--accent)}
+textarea.sys-prompt{resize:vertical;min-height:70px;font-size:11px;line-height:1.5}
+input[type=range]{width:calc(100% - 28px);margin:3px 14px;accent-color:var(--accent);cursor:pointer}
+.range-row{display:flex;justify-content:space-between;padding:0 14px;font-size:11px;color:var(--text2)}
+.range-row span{color:var(--accent2);font-weight:600}
+
+.sb-btn{display:flex;align-items:center;gap:6px;margin:4px 14px;padding:7px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:12px;cursor:pointer;width:calc(100% - 28px)}
+.sb-btn:hover{border-color:var(--accent);color:var(--accent)}
+.sb-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.sb-btn.primary:hover{background:var(--accent-h);border-color:var(--accent-h)}
+.sb-btn.danger:hover{border-color:var(--red);color:var(--red)}
+
+/* Skills/Memory list items */
+.md-item{display:flex;align-items:center;gap:6px;padding:5px 14px;cursor:pointer;border-radius:0}
+.md-item:hover{background:var(--bg3)}
+.md-item-name{flex:1;font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md-item:hover .md-item-name{color:var(--text)}
+.md-item-actions{display:none;gap:4px}
+.md-item:hover .md-item-actions{display:flex}
+.md-item-actions button{background:none;border:none;font-size:13px;cursor:pointer;color:var(--text3);padding:1px 3px;border-radius:3px}
+.md-item-actions button:hover{color:var(--accent2)}
+.md-item-actions button.del:hover{color:var(--red)}
+.md-empty{padding:6px 14px;font-size:11px;color:var(--text3)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0}
+.dot.skill{background:var(--accent)}
+.dot.mem{background:var(--yellow)}
+
+/* ── Main ── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* Topbar */
+#topbar{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;background:var(--bg2);flex-shrink:0}
+#toggle-sb{background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;padding:4px 8px;border-radius:5px;line-height:1}
+#toggle-sb:hover{color:var(--text);background:var(--bg3)}
+.tb-title{font-size:14px;font-weight:600;flex:1}
+.tb-badge{font-size:11px;background:var(--bg3);border:1px solid var(--border2);padding:3px 9px;border-radius:20px;color:var(--accent2);white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.tb-stat{font-size:11px;color:var(--text3)}
+.tb-btn{background:none;border:1px solid var(--border2);color:var(--text2);font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;white-space:nowrap}
+.tb-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+.tb-btn.red:hover{border-color:var(--red);color:var(--red)}
+
+/* Messages */
+#msgs{flex:1;overflow-y:auto;padding:20px 0;scroll-behavior:smooth}
+#msgs::-webkit-scrollbar{width:5px}
+#msgs::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.msg-wrap{max-width:860px;margin:0 auto 16px;padding:0 20px}
+.msg-user{display:flex;justify-content:flex-end}
+.msg-user .bbl{background:var(--accent);color:#fff;padding:10px 15px;border-radius:18px 18px 4px 18px;max-width:72%;font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.msg-agent .bbl{background:var(--bg2);border:1px solid var(--border2);padding:14px 18px;border-radius:4px 18px 18px 18px;font-size:14px;line-height:1.75;position:relative}
+.msg-agent .bbl.streaming::after{content:'▋';animation:blink .65s steps(1) infinite;color:var(--accent2)}
+@keyframes blink{50%{opacity:0}}
+
+/* Markdown */
+.bbl h1,.bbl h2,.bbl h3{margin:12px 0 6px;font-weight:600;color:#fff}
+.bbl h1{font-size:1.3em}.bbl h2{font-size:1.1em}.bbl h3{font-size:1em}
+.bbl p{margin-bottom:8px}
+.bbl ul,.bbl ol{padding-left:20px;margin-bottom:8px}
+.bbl li{margin-bottom:2px}
+.bbl blockquote{border-left:3px solid var(--accent);padding-left:12px;color:var(--text2);margin:8px 0}
+.bbl table{border-collapse:collapse;margin:8px 0;font-size:13px;width:100%}
+.bbl th,.bbl td{border:1px solid var(--border2);padding:6px 10px}
+.bbl th{background:var(--bg3);color:#fff}
+.bbl a{color:var(--accent2)}
+.bbl strong{color:#fff}
+.bbl code{background:#1c1c2e;padding:1px 6px;border-radius:4px;font-size:12.5px;font-family:'Cascadia Code','Fira Code',monospace}
+.bbl pre{background:#0d0d1a;border:1px solid #2a2a4a;border-radius:8px;margin:10px 0;overflow:hidden;position:relative}
+.bbl pre:hover .copy-btn{opacity:1}
+.copy-btn{position:absolute;top:7px;right:8px;background:var(--bg4);border:1px solid var(--border2);color:var(--text2);font-size:11px;padding:3px 8px;border-radius:4px;cursor:pointer;opacity:0;transition:opacity .2s}
+.copy-btn:hover{color:#fff;border-color:var(--accent2)}
+.copy-btn.copied{color:var(--green);border-color:var(--green)}
+.bbl pre code{background:none;padding:12px 14px;display:block;font-size:13px;line-height:1.55;overflow-x:auto}
+
+/* Tool calls */
+.tool-call{background:#080d1a;border:1px solid #1a2a4a;border-radius:8px;margin:10px 0;overflow:hidden;font-size:12px}
+.tool-hdr{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none}
+.tool-hdr:hover{background:#0d1525}
+.tool-icon{font-size:14px}
+.tool-name{color:var(--accent2);font-weight:600;font-family:monospace}
+.tool-args-preview{color:var(--text3);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:11px}
+.tool-status{flex-shrink:0;font-size:11px;padding:2px 7px;border-radius:10px}
+.tool-status.running{background:#2a1f00;color:var(--yellow)}
+.tool-status.done{background:#0a2a0a;color:var(--green)}
+.tool-status.err{background:#2a0a0a;color:var(--red)}
+.tool-bdy{display:none;border-top:1px solid #1a2a4a;padding:10px 12px}
+.tool-bdy.open{display:block}
+.tool-args-full{color:var(--text2);font-family:monospace;white-space:pre-wrap;word-break:break-all;font-size:11px;margin-bottom:8px}
+.tool-result{color:var(--text);font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;background:#04060f;padding:8px 10px;border-radius:5px;max-height:220px;overflow-y:auto;line-height:1.5}
+
+/* Thinking */
+.thinking{display:flex;align-items:center;gap:10px;color:var(--text3);font-size:13px;padding:0 20px;max-width:860px;margin:0 auto 12px}
+.dots span{display:inline-block;width:5px;height:5px;background:var(--accent);border-radius:50%;animation:db .8s ease-in-out infinite}
+.dots span:nth-child(2){animation-delay:.16s}.dots span:nth-child(3){animation-delay:.32s}
+@keyframes db{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-5px);opacity:1}}
+
+/* Input Area */
+#inp-area-wrap{border-top:1px solid var(--border);background:var(--bg2);padding:10px 20px 14px;flex-shrink:0}
+#preview-area{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.preview-item{width:60px;height:60px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);position:relative;background-size:cover;background-position:center}
+.preview-item .del-preview{position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;border:1px solid var(--bg2)}
+
+#inp-area{display:flex;gap:10px;align-items:flex-end}
+#msg-inp{flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:10px;padding:10px 14px;font-size:14px;resize:none;outline:none;font-family:inherit;line-height:1.55;max-height:180px;overflow-y:auto}
+#msg-inp:focus{border-color:var(--accent)}
+#msg-inp::placeholder{color:var(--text3)}
+.inp-btn{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);width:38px;height:38px;border-radius:8px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.inp-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+#send-btn{background:var(--accent);border-color:var(--accent);color:#fff}
+#send-btn:hover{background:var(--accent-h);border-color:var(--accent-h)}
+#send-btn:disabled{background:var(--bg3);border-color:var(--border2);color:var(--text3);cursor:not-allowed}
+
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;width:min(640px,95vw);max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+.modal-hdr{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.modal-hdr h3{flex:1;font-size:15px;font-weight:600}
+.modal-close{background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px}
+.modal-close:hover{color:var(--text);background:var(--bg3)}
+.modal-body{padding:16px 18px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.modal-inp-label{font-size:12px;color:var(--text2);margin-bottom:4px}
+.modal-inp{background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:8px 10px;font-size:13px;outline:none;font-family:inherit;width:100%}
+.modal-inp:focus{border-color:var(--accent)}
+.modal-ta{resize:vertical;min-height:200px;line-height:1.6;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px}
+.modal-footer{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.modal-footer button{padding:7px 16px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid var(--border2)}
+.modal-footer .btn-save{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.modal-footer .btn-save:hover{background:var(--accent-h)}
+.modal-footer .btn-cancel{background:var(--bg3);color:var(--text2)}
+.modal-footer .btn-cancel:hover{color:var(--text)}
+
+/* Toast */
+#toast{position:fixed;bottom:100px;right:18px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:200}
+#toast.show{opacity:1}
+
+.bbl img { max-width: 100%; border-radius: 8px; margin: 8px 0; border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="sb-logo">
+    <span class="sb-logo-text">ApexForge Swarm</span>
+    <span style="color:var(--text3);font-size:13px">Agent</span>
+    <span class="sb-logo-sub" id="sb-model-badge">–</span>
+  </div>
+  <div class="sb-body">
+
+    <!-- Model -->
+    <div class="sb-section">Model</div>
+    <label>Active Model</label>
+    <select id="model-sel"></select>
+
+    <label>Temperature <span id="temp-lbl" style="color:var(--accent2);float:right">0.7</span></label>
+    <input type="range" id="temp-sl" min="0" max="2" step="0.05" value="0.7"/>
+
+    <label>Context Window (tokens)</label>
+    <input type="number" id="ctx-inp" value="4096" min="512" max="131072" step="512"/>
+
+    <label>System Prompt</label>
+    <textarea class="sys-prompt" id="sys-prompt-ta" rows="4"></textarea>
+
+    <button class="sb-btn primary" id="save-cfg" style="margin-top:8px">💾 Save Settings</button>
+    <button class="sb-btn" id="reload-mem">⟳ Reload Skills & Memory</button>
+
+    <!-- Skills -->
+    <div class="sb-section" style="margin-top:10px">
+      Skills
+      <button onclick="openEditor('skill','','')">+ New</button>
+    </div>
+    <div id="skills-list"></div>
+
+    <!-- Memory -->
+    <div class="sb-section" style="margin-top:6px">
+      Memory
+      <button onclick="openEditor('memory','','')">+ New</button>
+    </div>
+    <div id="memory-list"></div>
+
+    <div style="height:20px"></div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="topbar">
+    <button id="toggle-sb" title="Toggle sidebar">☰</button>
+    <span class="tb-title">ApexForge Swarm</span>
+    <span class="tb-badge" id="tb-model">–</span>
+    <span class="tb-stat" id="tb-stats">0 msgs</span>
+    <button class="tb-btn" id="export-btn" title="Export conversation">↓ Export</button>
+    <button class="tb-btn red" id="clear-btn">✕ Clear</button>
+  </div>
+
+  <div id="msgs">
+    <div class="msg-wrap">
+      <div class="msg-agent">
+        <div class="bbl">
+          <strong>ApexForge Swarm</strong> — ready.<br/>
+          Tools: shell · python · files · web · search · docs · memory<br/>
+          <span style="color:var(--text3);font-size:12px">Select your model in the sidebar. Type a message or upload images below.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="inp-area-wrap">
+    <div id="preview-area"></div>
+    <div id="inp-area">
+      <input type="file" id="file-upload" multiple style="display:none" accept="image/*,.pdf,.docx,.csv,.xlsx">
+      <button class="inp-btn" id="upload-btn" title="Upload files (images/docs)">📎</button>
+      <textarea id="msg-inp" rows="1" placeholder="Message agent... (Enter = send)"></textarea>
+      <button class="inp-btn" id="send-btn">↑</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDITOR MODAL -->
+<div class="modal-bg" id="editor-modal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3 id="modal-title">Edit Skill</h3>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-inp-label">Name</div>
+        <input class="modal-inp" id="modal-name" placeholder="e.g. python_style"/>
+      </div>
+      <div style="flex:1">
+        <div class="modal-inp-label">Content (Markdown)</div>
+        <textarea class="modal-inp modal-ta" id="modal-content" rows="12"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── marked config ──────────────────────────────────────────────────────────
+marked.setOptions({
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, {language: lang}).value;
+    return hljs.highlightAuto(code).value;
+  },
+  breaks: true,
+});
+
+// ── State ──────────────────────────────────────────────────────────────────
+let ws = null, streaming = false, curBubble = null, curText = '', lastToolEl = null;
+let totalMsgs = 0;
+let selectedImages = []; // base64 strings
+let sessionId = localStorage.getItem('apexforge_session_id') || '';
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = e => handleEvt(JSON.parse(e.data));
+  ws.onclose = () => setTimeout(connectWS, 2000);
+}
+connectWS();
+
+function handleEvt(ev) {
+  if (ev.type === 'session') {
+    sessionId = ev.data.session_id;
+    localStorage.setItem('apexforge_session_id', sessionId);
+  } else if (ev.type === 'text') {
+    removeThinking();
+    if (!curBubble) curBubble = addAgentBubble();
+    curText += ev.data;
+    curBubble.innerHTML = renderMd(curText);
+    curBubble.classList.add('streaming');
+    addCopyBtns(curBubble);
+    scrollBottom();
+  } else if (ev.type === 'tool_call') {
+    removeThinking();
+    const el = addToolCall(ev.data.name, ev.data.args);
+    lastToolEl = el;
+    addThinking();
+    scrollBottom();
+  } else if (ev.type === 'tool_result') {
+    if (lastToolEl) { setToolDone(lastToolEl, ev.data.result); lastToolEl = null; }
+    scrollBottom();
+  } else if (ev.type === 'error') {
+    removeThinking();
+    addErrorBubble(ev.data);
+    resetStream();
+  } else if (ev.type === 'done') {
+    removeThinking();
+    if (curBubble) { curBubble.classList.remove('streaming'); addCopyBtns(curBubble); }
+    totalMsgs++;
+    updateStats();
+    resetStream();
+  }
+}
+
+function resetStream() {
+  streaming = false; curBubble = null; curText = '';
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('msg-inp').disabled = false;
+  document.getElementById('msg-inp').focus();
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function renderMd(text) { return marked.parse(text); }
+
+function addCopyBtns(el) {
+  el.querySelectorAll('pre').forEach(pre => {
+    if (pre.querySelector('.copy-btn')) return;
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn'; btn.textContent = 'Copy';
+    btn.onclick = () => {
+      const code = pre.querySelector('code');
+      navigator.clipboard.writeText(code ? code.innerText : pre.innerText);
+      btn.textContent = 'Copied!'; btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    };
+    pre.style.position = 'relative';
+    pre.appendChild(btn);
+  });
+}
+
+function addAgentBubble() {
+  const w = document.createElement('div');
+  w.className = 'msg-wrap';
+  w.innerHTML = '<div class="msg-agent"><div class="bbl"></div></div>';
+  document.getElementById('msgs').appendChild(w);
+  return w.querySelector('.bbl');
+}
+
+function addThinking() {
+  if (document.getElementById('thinking')) return;
+  const d = document.createElement('div');
+  d.id = 'thinking'; d.className = 'thinking';
+  d.innerHTML = '<div class="dots"><span></span><span></span><span></span></div><span>Thinking…</span>';
+  document.getElementById('msgs').appendChild(d);
+  scrollBottom();
+}
+function removeThinking() { document.getElementById('thinking')?.remove(); }
+
+const TOOL_ICONS = {
+  run_shell:'⚡', run_python:'🐍', run_javascript:'🟨', read_file:'📖', write_file:'✏️', list_directory:'📂',
+  search_files:'🔍', create_directory:'📁', delete_path:'🗑', move_path:'✂️', fetch_url:'🌐',
+  web_search:'🌐', read_document:'📄', remember:'💾', recall:'🧠', learn_skill:'📚'
+};
+
+function addToolCall(name, args) {
+  const argsStr = JSON.stringify(args, null, 2);
+  const preview = Object.entries(args).map(([k,v])=>`${k}=${JSON.stringify(v).slice(0,40)}`).join(', ');
+  const icon = TOOL_ICONS[name] || '⚙';
+  const div = document.createElement('div');
+  div.className = 'tool-call';
+  div.innerHTML = `
+    <div class="tool-hdr" onclick="this.nextElementSibling.classList.toggle('open')">
+      <span class="tool-icon">${icon}</span>
+      <span class="tool-name">${esc(name)}</span>
+      <span class="tool-args-preview">${esc(preview)}</span>
+      <span class="tool-status running">Running…</span>
+    </div>
+    <div class="tool-bdy">
+      <div class="tool-args-full">${esc(argsStr)}</div>
+      <div class="tool-result"></div>
+    </div>`;
+  if (curBubble) {
+    curBubble.appendChild(div);
+  } else {
+    const w = document.createElement('div');
+    w.className = 'msg-wrap';
+    const a = document.createElement('div'); a.className = 'msg-agent';
+    a.appendChild(div); w.appendChild(a);
+    document.getElementById('msgs').appendChild(w);
+  }
+  return div;
+}
+
+function setToolDone(el, result) {
+  const st = el.querySelector('.tool-status');
+  st.textContent = '✓ Done'; st.className = 'tool-status done';
+  const res = el.querySelector('.tool-result');
+  res.textContent = result.length > 3000 ? result.slice(0, 3000) + '\n…(truncated)' : result;
+}
+
+function addErrorBubble(msg) {
+  const w = document.createElement('div');
+  w.className = 'msg-wrap';
+  w.innerHTML = `<div class="msg-agent"><div class="bbl" style="border-color:var(--red);color:var(--red)">⚠ ${esc(msg)}</div></div>`;
+  document.getElementById('msgs').appendChild(w);
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function scrollBottom() {
+  const m = document.getElementById('msgs');
+  m.scrollTop = m.scrollHeight;
+}
+
+// ── Upload ─────────────────────────────────────────────────────────────────
+document.getElementById('upload-btn').onclick = () => document.getElementById('file-upload').click();
+document.getElementById('file-upload').onchange = e => {
+  const files = e.target.files;
+  for (const f of files) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const base64 = ev.target.result.split(',')[1];
+      if (f.type.startsWith('image/')) {
+        selectedImages.push(base64);
+        addPreview(ev.target.result, selectedImages.length - 1);
+      } else {
+        // If it's a doc, we could potentially handle it differently, 
+        // but for now let's just toast and maybe handle via path?
+        // Actually, LLM vision only supports images.
+        toast('Images are sent to Vision. Docs should be read using tools.');
+      }
+    };
+    reader.readAsDataURL(f);
+  }
+};
+
+function addPreview(src, idx) {
+  const div = document.createElement('div');
+  div.className = 'preview-item';
+  div.style.backgroundImage = `url(${src})`;
+  div.innerHTML = `<div class="del-preview" onclick="removePreview(${idx}, this.parentElement)">✕</div>`;
+  document.getElementById('preview-area').appendChild(div);
+}
+
+function removePreview(idx, el) {
+  selectedImages.splice(idx, 1);
+  el.remove();
+}
+
+// ── Send ───────────────────────────────────────────────────────────────────
+function sendMessage() {
+  const inp = document.getElementById('msg-inp');
+  const text = inp.value.trim();
+  if ((!text && selectedImages.length === 0) || streaming || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const w = document.createElement('div');
+  w.className = 'msg-wrap msg-user';
+  let html = `<div class="bbl">${esc(text)}`;
+  if (selectedImages.length > 0) {
+    html += '<div style="display:flex;gap:5px;margin-top:8px">';
+    selectedImages.forEach(img => {
+      html += `<img src="data:image/jpeg;base64,${img}" style="height:60px;border-radius:4px;border:1px solid rgba(255,255,255,0.1)">`;
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  w.innerHTML = html;
+  document.getElementById('msgs').appendChild(w);
+  scrollBottom();
+
+  streaming = true;
+  document.getElementById('send-btn').disabled = true;
+  inp.disabled = true; inp.value = ''; inp.style.height = 'auto';
+
+  addThinking();
+  ws.send(JSON.stringify({message: text, images: selectedImages, session_id: sessionId}));
+  
+  selectedImages = [];
+  document.getElementById('preview-area').innerHTML = '';
+}
+
+document.getElementById('send-btn').onclick = sendMessage;
+document.getElementById('msg-inp').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+document.getElementById('msg-inp').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 180) + 'px';
+});
+
+// ── Topbar actions ─────────────────────────────────────────────────────────
+document.getElementById('clear-btn').onclick = async () => {
+  await fetch('/api/clear', {method:'POST'});
+  document.getElementById('msgs').innerHTML = '';
+  totalMsgs = 0; updateStats();
+  toast('Conversation cleared');
+};
+
+document.getElementById('export-btn').onclick = () => {
+  window.location.href = '/api/export';
+};
+
+document.getElementById('toggle-sb').onclick = () => {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+};
+
+function updateStats() {
+  document.getElementById('tb-stats').textContent = `${totalMsgs} msg${totalMsgs!==1?'s':''}`;
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────
+async function loadConfig() {
+  const r = await fetch('/api/config');
+  const d = await r.json();
+  document.getElementById('temp-sl').value = d.temperature;
+  document.getElementById('temp-lbl').textContent = d.temperature;
+  document.getElementById('ctx-inp').value = d.num_ctx;
+  document.getElementById('sys-prompt-ta').value = d.system_prompt || '';
+  document.getElementById('tb-model').textContent = d.model;
+  document.getElementById('sb-model-badge').textContent = d.model.split(':')[0];
+  totalMsgs = d.message_count; updateStats();
+  renderSkillsList(d.skills);
+  renderMemoryList(d.memories);
+}
+
+async function loadModels() {
+  const r = await fetch('/api/models');
+  const d = await r.json();
+  const cfg = await (await fetch('/api/config')).json();
+  const sel = document.getElementById('model-sel');
+  sel.innerHTML = d.models.map(m => `<option${m===cfg.model?' selected':''}>${esc(m)}</option>`).join('');
+}
+
+document.getElementById('temp-sl').oninput = function() {
+  document.getElementById('temp-lbl').textContent = parseFloat(this.value).toFixed(2);
+};
+
+document.getElementById('save-cfg').onclick = async () => {
+  const model = document.getElementById('model-sel').value;
+  await fetch('/api/config', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      model,
+      temperature: parseFloat(document.getElementById('temp-sl').value),
+      num_ctx: parseInt(document.getElementById('ctx-inp').value),
+      system_prompt: document.getElementById('sys-prompt-ta').value,
+    })
+  });
+  document.getElementById('tb-model').textContent = model;
+  document.getElementById('sb-model-badge').textContent = model.split(':')[0];
+  toast('Settings saved ✓');
+};
+
+document.getElementById('reload-mem').onclick = async () => {
+  const r = await fetch('/api/reload', {method:'POST'});
+  const d = await r.json();
+  renderSkillsList(d.skills);
+  renderMemoryList(d.memories);
+  toast('Reloaded ✓');
+};
+
+// ── Skills/Memory lists ────────────────────────────────────────────────────
+function renderSkillsList(names) {
+  const el = document.getElementById('skills-list');
+  if (!names.length) { el.innerHTML = '<div class="md-empty">No skills yet</div>'; return; }
+  el.innerHTML = names.map(n => `
+    <div class="md-item">
+      <span class="dot skill"></span>
+      <span class="md-item-name">${esc(n)}</span>
+      <span class="md-item-actions">
+        <button onclick="editMdItem('skill','${esc(n)}')" title="Edit">✏</button>
+        <button class="del" onclick="deleteMdItem('skill','${esc(n)}')" title="Delete">✕</button>
+      </span>
+    </div>`).join('');
+}
+
+function renderMemoryList(names) {
+  const el = document.getElementById('memory-list');
+  if (!names.length) { el.innerHTML = '<div class="md-empty">No memories yet</div>'; return; }
+  el.innerHTML = names.map(n => `
+    <div class="md-item">
+      <span class="dot mem"></span>
+      <span class="md-item-name">${esc(n)}</span>
+      <span class="md-item-actions">
+        <button onclick="editMdItem('memory','${esc(n)}')" title="Edit">✏</button>
+        <button class="del" onclick="deleteMdItem('memory','${esc(n)}')" title="Delete">✕</button>
+      </span>
+    </div>`).join('');
+}
+
+// ── Editor Modal ───────────────────────────────────────────────────────────
+let modalType = 'skill', modalOrigName = '';
+
+function openEditor(type, name, content) {
+  modalType = type; modalOrigName = name;
+  document.getElementById('modal-title').textContent = name ? `Edit ${type}` : `New ${type}`;
+  document.getElementById('modal-name').value = name;
+  document.getElementById('modal-content').value = content;
+  document.getElementById('editor-modal').classList.add('open');
+  setTimeout(() => document.getElementById(name ? 'modal-content' : 'modal-name').focus(), 50);
+}
+
+function closeModal() { document.getElementById('editor-modal').classList.remove('open'); }
+
+async function editMdItem(type, name) {
+  const endpoint = type === 'skill' ? `/api/skills/${name}` : `/api/memory/${name}`;
+  const r = await fetch(endpoint);
+  const d = await r.json();
+  openEditor(type, name, d.content);
+}
+
+async function deleteMdItem(type, name) {
+  if (!confirm(`Delete ${type} "${name}"?`)) return;
+  const endpoint = type === 'skill' ? `/api/skills/${name}` : `/api/memory/${name}`;
+  await fetch(endpoint, {method:'DELETE'});
+  await refreshLists();
+  toast(`Deleted ${type}: ${name}`);
+}
+
+async function saveModal() {
+  const name = document.getElementById('modal-name').value.trim();
+  const content = document.getElementById('modal-content').value;
+  if (!name) { alert('Name is required'); return; }
+  const endpoint = modalType === 'skill' ? `/api/skills/${name}` : `/api/memory/${name}`;
+  await fetch(endpoint, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({content})
+  });
+  closeModal();
+  await refreshLists();
+  toast(`Saved ${modalType}: ${name} ✓`);
+}
+
+async function refreshLists() {
+  const r = await fetch('/api/config');
+  const d = await r.json();
+  renderSkillsList(d.skills);
+  renderMemoryList(d.memories);
+}
+
+// Close modal on backdrop click
+document.getElementById('editor-modal').onclick = function(e) {
+  if (e.target === this) closeModal();
+};
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+loadConfig();
+loadModels();
+</script>
+</body>
+</html>

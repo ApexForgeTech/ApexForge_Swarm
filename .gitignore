@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.log
+.DS_Store
+Thumbs.db
+.runtime/
+memory/
+profiles/*/sessions/
+profiles/*/memory/
+sessions.db
+rag_store/
+test_qovluq/

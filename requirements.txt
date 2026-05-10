@@ -1,0 +1,19 @@
+ollama>=0.3.0
+rich>=13.7.0
+prompt_toolkit>=3.0.43
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+pyyaml>=6.0.1
+python-dotenv>=1.0.1
+duckduckgo_search>=6.0.0
+pypdf>=4.0.0
+python-docx>=1.1.0
+pandas>=2.2.0
+openpyxl>=3.1.0
+pywebview>=5.0.0
+qtpy>=2.4.0
+PyQt6>=6.11.0
+PyQt6-WebEngine>=6.11.0
+# RAG (optional — system works without these via keyword-search fallback)
+chromadb>=0.5.0
+openai>=1.0.0

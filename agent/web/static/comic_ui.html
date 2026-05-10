@@ -1,0 +1,1750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ApexForge Swarm — Multi-Agent War Room</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;700&display=swap');
+
+        :root {
+            --bg: #09111d;
+            --bg-deep: #050a13;
+            --panel: rgba(14, 22, 37, 0.88);
+            --panel-strong: rgba(19, 31, 50, 0.96);
+            --panel-soft: rgba(24, 37, 60, 0.86);
+            --line: rgba(120, 168, 255, 0.18);
+            --line-strong: rgba(120, 168, 255, 0.34);
+            --text: #edf4ff;
+            --muted: #93a6c9;
+            --accent: #67d5ff;
+            --accent-2: #4ef0c3;
+            --gold: #ffd264;
+            --danger: #ff667d;
+            --paper: #fff8ea;
+            --paper-user: #d7f0ff;
+            --ink: #071220;
+            --shadow: 0 26px 60px rgba(0, 0, 0, 0.35);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            overflow: hidden;
+            color: var(--text);
+            font-family: 'Space Grotesk', sans-serif;
+            background:
+                radial-gradient(circle at 20% 0%, rgba(103, 213, 255, 0.14), transparent 28%),
+                radial-gradient(circle at 100% 0%, rgba(255, 210, 100, 0.12), transparent 24%),
+                linear-gradient(180deg, #09111d 0%, #060b13 100%);
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.09;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 22px 22px;
+        }
+
+        #app-shell {
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            height: 100vh;
+        }
+
+        #header {
+            position: relative;
+            padding: 16px 24px 12px;
+            border-bottom: 1px solid var(--line);
+            background:
+                linear-gradient(135deg, rgba(8, 15, 27, 0.96), rgba(20, 31, 51, 0.94));
+            box-shadow: var(--shadow);
+            z-index: 3;
+        }
+
+        #header h1 {
+            margin: 0;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: clamp(34px, 5vw, 58px);
+            letter-spacing: 0.08em;
+            font-weight: 400;
+        }
+
+        #header p {
+            margin: 2px 0 0;
+            color: var(--muted);
+            letter-spacing: 0.18em;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        #setup-bar {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px 24px;
+            background: linear-gradient(180deg, rgba(15, 25, 42, 0.96), rgba(12, 20, 34, 0.95));
+            border-bottom: 1px solid var(--line);
+            z-index: 2;
+        }
+
+        .setup-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        input, select {
+            min-height: 44px;
+            padding: 10px 14px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: rgba(5, 11, 20, 0.92);
+            color: var(--text);
+            font-family: inherit;
+            outline: none;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(103, 213, 255, 0.12);
+        }
+
+        button {
+            min-height: 44px;
+            padding: 10px 16px;
+            border: 0;
+            border-radius: 14px;
+            cursor: pointer;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 18px;
+            letter-spacing: 0.06em;
+            color: #07111d;
+            background: linear-gradient(135deg, var(--gold), #ffb54f);
+            box-shadow: 0 12px 28px rgba(255, 181, 79, 0.24);
+        }
+
+        button.secondary {
+            color: var(--text);
+            background: linear-gradient(135deg, rgba(17, 28, 44, 0.98), rgba(25, 39, 62, 0.98));
+            border: 1px solid var(--line-strong);
+            box-shadow: none;
+        }
+
+        button:disabled {
+            opacity: 0.48;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .helper-copy {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        #runtime-diagnostics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .diag-pill {
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+            padding: 7px 11px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(7, 13, 23, 0.74);
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.4;
+        }
+
+        .diag-pill strong {
+            color: var(--text);
+            font-size: 11px;
+        }
+
+        .worker-entry {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: rgba(7, 13, 23, 0.86);
+        }
+
+        #mission-stage {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: minmax(320px, 44%) minmax(360px, 56%);
+            gap: 18px;
+            padding: 18px 24px;
+            overflow: hidden;
+        }
+
+        .panel {
+            min-height: 0;
+            border-radius: 24px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(14, 24, 40, 0.94), rgba(12, 20, 34, 0.94));
+        }
+
+        .panel-head strong {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 24px;
+            letter-spacing: 0.08em;
+            font-weight: 400;
+        }
+
+        .panel-head span {
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        #war-room {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 0;
+        }
+
+        #board-wrap {
+            position: relative;
+            padding: 18px;
+            min-height: 390px;
+            background:
+                radial-gradient(circle at center, rgba(103, 213, 255, 0.08), transparent 32%),
+                linear-gradient(180deg, rgba(9, 17, 29, 0.96), rgba(5, 11, 19, 0.98));
+        }
+
+        #command-table {
+            position: relative;
+            height: 100%;
+            min-height: 340px;
+            border-radius: 28px;
+            border: 1px solid rgba(103, 213, 255, 0.16);
+            background:
+                radial-gradient(circle at center, rgba(26, 42, 70, 0.98), rgba(11, 18, 30, 0.98)),
+                linear-gradient(180deg, rgba(16, 25, 42, 0.96), rgba(9, 15, 25, 0.96));
+            overflow: hidden;
+        }
+
+        #command-table::before {
+            content: '';
+            position: absolute;
+            inset: 14px;
+            border-radius: 22px;
+            border: 1px dashed rgba(103, 213, 255, 0.16);
+        }
+
+        #mission-core {
+            position: absolute;
+            inset: 50% auto auto 50%;
+            transform: translate(-50%, -50%);
+            width: min(40vw, 310px);
+            max-width: calc(100% - 120px);
+            padding: 18px 20px;
+            border-radius: 22px;
+            border: 1px solid rgba(255,255,255,0.05);
+            background: rgba(5, 11, 19, 0.8);
+            text-align: center;
+            box-shadow: 0 20px 34px rgba(0,0,0,0.2);
+        }
+
+        #mission-core h3 {
+            margin: 0 0 8px;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 26px;
+            letter-spacing: 0.08em;
+            font-weight: 400;
+        }
+
+        #mission-core p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .seat {
+            position: absolute;
+            width: 170px;
+            min-height: 118px;
+            padding: 14px;
+            border-radius: 20px;
+            border: 1px solid rgba(103, 213, 255, 0.18);
+            background: rgba(13, 22, 37, 0.92);
+            box-shadow: 0 18px 30px rgba(0, 0, 0, 0.22);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .seat.supervisor {
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-color: rgba(255, 210, 100, 0.28);
+        }
+
+        .seat .seat-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .seat .seat-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            display: grid;
+            place-items: center;
+            font-size: 22px;
+            background: linear-gradient(180deg, rgba(32, 47, 75, 0.95), rgba(13, 22, 37, 0.95));
+            border: 1px solid rgba(103, 213, 255, 0.18);
+        }
+
+        .seat .seat-title {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .seat .seat-title strong {
+            display: block;
+            font-size: 14px;
+        }
+
+        .seat .seat-title span {
+            display: block;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .status-pill {
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            border: 1px solid rgba(255,255,255,0.08);
+            color: var(--muted);
+            background: rgba(255,255,255,0.05);
+        }
+
+        .status-idle { color: #9eb2cf; }
+        .status-assigned, .status-active { color: var(--accent); border-color: rgba(103, 213, 255, 0.18); }
+        .status-completed { color: var(--accent-2); border-color: rgba(78, 240, 195, 0.18); }
+        .status-review { color: var(--gold); border-color: rgba(255, 210, 100, 0.18); }
+        .status-error { color: var(--danger); border-color: rgba(255, 102, 125, 0.18); }
+
+        .seat .seat-task,
+        .seat .seat-last {
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.5;
+            min-height: 32px;
+        }
+
+        .seat-progress {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .seat-progress-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .seat-progress-track {
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08);
+            overflow: hidden;
+        }
+
+        .seat-progress-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            transition: width 180ms ease-out;
+        }
+
+        .seat-stage {
+            color: var(--text);
+        }
+
+        #worker-seats {
+            position: absolute;
+            inset: 0;
+        }
+
+        #ops-feed {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            padding: 0 18px 18px;
+            min-height: 0;
+        }
+
+        .mini-panel {
+            min-height: 150px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: rgba(8, 14, 24, 0.86);
+            padding: 14px;
+            overflow: auto;
+        }
+
+        .mini-panel h4 {
+            margin: 0 0 10px;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 20px;
+            font-weight: 400;
+            letter-spacing: 0.08em;
+        }
+
+        #board-log, #mission-log {
+            font-family: monospace;
+            font-size: 11px;
+            color: #9de9c6;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        #timeline-log {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .tl-entry {
+            display: flex;
+            gap: 6px;
+            align-items: flex-start;
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .tl-icon { flex: 0 0 16px; text-align: center; }
+        .tl-time { flex: 0 0 60px; color: #5c7a9a; font-family: monospace; }
+        .tl-text { flex: 1; color: #c8ddf0; }
+        .tl-mission { color: var(--accent); }
+        .tl-planning { color: #a78bfa; }
+        .tl-assignment { color: var(--gold); }
+        .tl-report { color: var(--accent-2); }
+        .tl-review { color: #fb923c; }
+        .tl-error { color: var(--danger); }
+        .tl-done { color: var(--accent-2); font-weight: 600; }
+
+        #mission-history-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 11px;
+        }
+
+        .history-row {
+            padding: 6px 8px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            background: rgba(5, 11, 20, 0.7);
+            cursor: pointer;
+            transition: border-color 120ms;
+        }
+
+        .history-row:hover {
+            border-color: rgba(103, 213, 255, 0.3);
+        }
+
+        .history-row .hr-prompt {
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-row .hr-meta {
+            display: flex;
+            gap: 8px;
+            color: var(--muted);
+            font-size: 10px;
+            margin-top: 2px;
+        }
+
+        .hr-status-completed { color: var(--accent-2); }
+        .hr-status-failed { color: var(--danger); }
+        .hr-status-running { color: var(--gold); }
+
+        #mission-stats {
+            display: none;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px 0 2px;
+        }
+
+        .stat-pill {
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--line);
+            font-size: 11px;
+            color: var(--text);
+        }
+
+        .stat-pill strong { color: var(--accent); }
+
+        #chat-panel {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 0;
+        }
+
+        #chat-container {
+            min-height: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            padding: 18px;
+        }
+
+        .agent-container {
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            animation: slideIn 0.24s ease-out;
+        }
+
+        .msg-user {
+            flex-direction: row-reverse;
+        }
+
+        .avatar-wrap {
+            width: 86px;
+            flex: 0 0 86px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .avatar {
+            width: 68px;
+            height: 68px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            font-size: 34px;
+            border: 1px solid rgba(103, 213, 255, 0.18);
+            background: linear-gradient(180deg, rgba(31, 47, 75, 0.98), rgba(11, 18, 30, 0.98));
+        }
+
+        .agent-label {
+            padding: 5px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(103, 213, 255, 0.16);
+            font-size: 10px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            background: rgba(9, 16, 28, 0.8);
+        }
+
+        .status-bars {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .bar {
+            height: 7px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.08);
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: inherit;
+        }
+
+        .hp { width: 100%; background: linear-gradient(90deg, #ff647c, #ff9a72); }
+        .mana { width: 78%; background: linear-gradient(90deg, #52e0c1, #66d6ff); }
+
+        .speech-bubble {
+            position: relative;
+            max-width: min(76%, 900px);
+            padding: 16px 18px;
+            border-radius: 22px;
+            background: var(--paper);
+            color: var(--ink);
+            box-shadow: 0 20px 30px rgba(0,0,0,0.18);
+        }
+
+        .speech-bubble::before {
+            content: '';
+            position: absolute;
+            left: -10px;
+            top: 22px;
+            width: 20px;
+            height: 20px;
+            background: var(--paper);
+            transform: rotate(45deg);
+        }
+
+        .msg-user .speech-bubble {
+            background: var(--paper-user);
+        }
+
+        .msg-user .speech-bubble::before {
+            left: auto;
+            right: -10px;
+            background: var(--paper-user);
+        }
+
+        .agent-name {
+            margin-bottom: 8px;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 22px;
+            letter-spacing: 0.06em;
+        }
+
+        .text-content {
+            line-height: 1.7;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+
+        .thought-bubble {
+            margin-bottom: 10px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            border: 1px dashed rgba(35, 100, 170, 0.26);
+            background: rgba(255,255,255,0.72);
+            color: #476180;
+            font-size: 12px;
+            font-style: italic;
+        }
+
+        .tool-call {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            border: 1px dashed rgba(35, 100, 170, 0.2);
+            background: rgba(255,255,255,0.76);
+            color: #345173;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .report-card {
+            margin-top: 12px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(35, 100, 170, 0.18);
+            background: rgba(255,255,255,0.72);
+            color: #26405d;
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
+        .report-card strong {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .report-list {
+            margin: 6px 0 0;
+            padding-left: 18px;
+        }
+
+        .report-list li {
+            margin: 4px 0;
+        }
+
+        .tool-icon-anim {
+            display: inline-block;
+            margin-right: 7px;
+            animation: pulse 0.7s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-2px); }
+        }
+
+        .info-msg {
+            text-align: center;
+        }
+
+        .info-tag {
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(7, 13, 23, 0.78);
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        #input-area-wrap {
+            padding: 16px 24px 20px;
+            border-top: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(11, 17, 29, 0.96), rgba(7, 12, 20, 0.98));
+        }
+
+        #input-area {
+            display: flex;
+            gap: 12px;
+            max-width: 1380px;
+            margin: 0 auto;
+        }
+
+        #action-strip {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #user-input {
+            flex: 1;
+        }
+
+        #go-btn {
+            min-width: 180px;
+            background: linear-gradient(135deg, var(--accent), #2289ff);
+            color: #07111d;
+            box-shadow: 0 14px 26px rgba(34, 137, 255, 0.25);
+        }
+
+        #victory-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: rgba(0,0,0,0.78);
+            align-items: center;
+            justify-content: center;
+        }
+
+        #victory-card {
+            padding: 38px;
+            border-radius: 28px;
+            background: linear-gradient(135deg, #ffd86f, #ffb84e);
+            color: #0a1321;
+            box-shadow: 0 32px 70px rgba(0,0,0,0.38);
+            text-align: center;
+        }
+
+        #victory-card h2 {
+            margin: 0;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 58px;
+            font-weight: 400;
+            letter-spacing: 0.06em;
+        }
+
+        @media (max-width: 1100px) {
+            #mission-stage {
+                grid-template-columns: 1fr;
+                grid-template-rows: minmax(420px, auto) 1fr;
+            }
+
+            #ops-feed {
+                grid-template-columns: 1fr;
+            }
+
+            .seat {
+                width: 152px;
+            }
+        }
+
+        @media (max-width: 800px) {
+            #setup-bar, #mission-stage, #input-area-wrap, #header {
+                padding-left: 14px;
+                padding-right: 14px;
+            }
+
+            #input-area {
+                flex-direction: column;
+            }
+
+            #go-btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app-shell">
+        <div id="header">
+            <h1>ApexForge Swarm War Room</h1>
+            <p>desktop multi-agent comic mission board</p>
+        </div>
+
+        <div id="setup-bar">
+            <div class="setup-row">
+                <span style="font-weight:700; color:var(--gold); letter-spacing:.06em">📋 Template</span>
+                <select id="template-picker" onchange="applyTemplate()" style="min-width:180px">
+                    <option value="">Custom team</option>
+                </select>
+                <span style="font-weight:700; color:var(--gold); letter-spacing:.06em; margin-left:12px">👑 Supervisor</span>
+                <input type="text" id="sup-role" value="Project Manager" placeholder="Supervisor role">
+                <select id="sup-model"></select>
+                <button class="secondary" style="margin-left:auto" onclick="addWorker()">+ Worker</button>
+                <button class="secondary" onclick="updateTeam()">Sync Team</button>
+            </div>
+            <div id="template-hint" class="helper-copy" style="display:none"></div>
+            <div class="helper-copy" id="default-hint">
+                Deploy a mission. Supervisor plans → workers execute in parallel → supervisor reviews. Repeat up to 3 rounds.
+            </div>
+            <div id="runtime-diagnostics"></div>
+            <div id="mission-stats"></div>
+            <div id="workers-list" class="setup-row"></div>
+        </div>
+
+        <div id="mission-stage">
+            <section id="war-room" class="panel">
+                <div class="panel-head">
+                    <strong>Mission Table</strong>
+                    <span>board view</span>
+                </div>
+                <div id="board-wrap">
+                    <div id="command-table">
+                        <div id="mission-core">
+                            <h3 id="mission-title">Awaiting Mission</h3>
+                            <p id="mission-subtitle">Deploy a mission to watch agents negotiate, execute, and report back on the board.</p>
+                        </div>
+                        <div id="supervisor-seat" class="seat supervisor">
+                            <div class="seat-top">
+                                <div class="seat-avatar">👑</div>
+                                <div class="seat-title">
+                                    <strong>Supervisor</strong>
+                                    <span id="supervisor-role-label">Project Manager</span>
+                                </div>
+                                <div class="status-pill status-idle" id="seat-status-Supervisor">idle</div>
+                            </div>
+                            <div class="seat-task" id="seat-task-Supervisor">Waiting to receive the next mission.</div>
+                            <div class="seat-progress">
+                                <div class="seat-progress-meta">
+                                    <span class="seat-stage" id="seat-stage-Supervisor">Idle</span>
+                                    <span id="seat-progress-label-Supervisor">0%</span>
+                                </div>
+                                <div class="seat-progress-track">
+                                    <div class="seat-progress-fill" id="seat-progress-fill-Supervisor"></div>
+                                </div>
+                            </div>
+                            <div class="seat-last" id="seat-last-Supervisor">No orders issued yet.</div>
+                        </div>
+                        <div id="worker-seats"></div>
+                    </div>
+                </div>
+                <div id="ops-feed">
+                    <div class="mini-panel">
+                        <h4>Commander Feed</h4>
+                        <div id="board-log">-- board feed ready --</div>
+                    </div>
+                    <div class="mini-panel">
+                        <h4>Mission Log</h4>
+                        <div id="mission-log">-- mission log started --</div>
+                    </div>
+                    <div class="mini-panel">
+                        <h4>Timeline</h4>
+                        <div id="timeline-log"></div>
+                    </div>
+                    <div class="mini-panel">
+                        <h4>Mission History</h4>
+                        <div id="mission-history-list">-- loading history --</div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="chat-panel" class="panel">
+                <div class="panel-head">
+                    <strong>Comic Transcript</strong>
+                    <span>agent conversations</span>
+                </div>
+                <div id="chat-container">
+                    <div class="info-msg">
+                        <div class="info-tag">Team assembled. Define the mission and deploy the board.</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="input-area-wrap">
+            <div id="input-area">
+                <input type="text" id="user-input" placeholder="Describe the mission, bug, or objective for the team...">
+                <button id="go-btn" onclick="send()">DEPLOY MISSION</button>
+                <button id="cancel-btn" class="secondary" onclick="cancelMission()" disabled>ABORT MISSION</button>
+                <div id="action-strip">
+                    <button id="replay-btn" class="secondary" onclick="replayLastMission()" disabled>REPLAY LAST MISSION</button>
+                    <button id="export-btn" class="secondary" onclick="exportMissionLog()" disabled>EXPORT LOG</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="victory-overlay">
+        <div id="victory-card">
+            <h2>MISSION ACCOMPLISHED</h2>
+            <p>The board team delivered a final answer.</p>
+            <button style="margin-top:18px" onclick="document.getElementById('victory-overlay').style.display='none'">Continue</button>
+        </div>
+    </div>
+
+    <script>
+        const chat = document.getElementById('chat-container');
+        const input = document.getElementById('user-input');
+        const goBtn = document.getElementById('go-btn');
+        const missionTitle = document.getElementById('mission-title');
+        const missionSubtitle = document.getElementById('mission-subtitle');
+        const boardLog = document.getElementById('board-log');
+        const missionLog = document.getElementById('mission-log');
+        const timelineLog = document.getElementById('timeline-log');
+        const runtimeDiagnostics = document.getElementById('runtime-diagnostics');
+        const workerSeats = document.getElementById('worker-seats');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const replayBtn = document.getElementById('replay-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const missionStats = document.getElementById('mission-stats');
+        const templatePicker = document.getElementById('template-picker');
+        const templateHint = document.getElementById('template-hint');
+        const defaultHint = document.getElementById('default-hint');
+        const missionHistoryList = document.getElementById('mission-history-list');
+        let availableModels = [];
+        let allTemplates = [];
+
+        const AVATARS = {
+            'Supervisor': '👑',
+            'Worker_1': '🛠',
+            'Worker_2': '🧪',
+            'Worker_3': '📚',
+            'Worker_4': '🎯',
+            'Worker_5': '🧠',
+            'User': '🧑'
+        };
+
+        const workerSeatPositions = [
+            { top: '28%', left: '6%' },
+            { top: '28%', right: '6%' },
+            { bottom: '8%', left: '14%' },
+            { bottom: '8%', right: '14%' },
+            { top: '54%', left: '50%', transform: 'translateX(-50%)' }
+        ];
+
+        const TOOL_ICONS = {
+            'run_shell': '⚡',
+            'run_python': '🐍',
+            'run_javascript': '🟨',
+            'read_file': '📖',
+            'write_file': '✏️',
+            'list_directory': '📂',
+            'search_files': '🔍',
+            'web_search': '🌐',
+            'read_document': '📄'
+        };
+
+        const STAGE_MAP = {
+            idle: { label: 'Idle', progress: 0 },
+            planning: { label: 'Planning', progress: 18 },
+            assigned: { label: 'Assigned', progress: 32 },
+            active: { label: 'Executing', progress: 58 },
+            tooling: { label: 'Tooling', progress: 72 },
+            reporting: { label: 'Reporting', progress: 86 },
+            review: { label: 'Review', progress: 92 },
+            completed: { label: 'Completed', progress: 100 },
+            error: { label: 'Error', progress: 100 }
+        };
+
+        let currentAgentBubbles = {};
+        let thoughtBubbles = {};
+        let pendingTools = {};
+        let seatState = {};
+        let currentMissionEvents = [];
+        let lastMissionRecord = null;
+        let replayTimer = null;
+        let isReplaying = false;
+
+        function cloneEvent(ev) {
+            return JSON.parse(JSON.stringify(ev));
+        }
+
+        function refreshActionButtons() {
+            const hasMissionRecord = !!(lastMissionRecord && lastMissionRecord.events && lastMissionRecord.events.length);
+            replayBtn.disabled = goBtn.disabled || !hasMissionRecord || isReplaying;
+            exportBtn.disabled = !hasMissionRecord;
+        }
+
+        function appendBoardLog(text) {
+            boardLog.textContent += `\n[${new Date().toLocaleTimeString()}] ${text}`;
+            boardLog.scrollTop = boardLog.scrollHeight;
+        }
+
+        function writeToLog(msg) {
+            missionLog.textContent += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
+            missionLog.scrollTop = missionLog.scrollHeight;
+        }
+
+        function writeTimeline(msg) {
+            timelineLog.textContent += `\n[${new Date().toLocaleTimeString()}] ${msg}`;
+            timelineLog.scrollTop = timelineLog.scrollHeight;
+        }
+
+        function stageDetails(stage) {
+            return STAGE_MAP[stage] || STAGE_MAP.idle;
+        }
+
+        function buildDiagnosticAdvice(diag) {
+            const advice = [];
+            const caps = (diag && diag.backend_capabilities) || {};
+            if (!diag?.native_desktop_available) {
+                advice.push('Desktop window mode active deyil. Native pəncərə üçün pywebview və GUI backend quraşdır.');
+            }
+            if (diag?.desktop_fallback_allowed && !diag?.native_desktop_available) {
+                advice.push('Fallback açıqdır, buna görə native desktop yerinə browser axınına düşə bilərsən.');
+            }
+            if (caps.request_parallelism === 'serialized') {
+                advice.push('Bu backend sorğuları növbələyir. Çox worker olsa da real token paralelliyi məhdud olacaq.');
+            }
+            if (caps.mixed_model_missions === 'normalized_to_single_model') {
+                advice.push('Fərqli worker modelləri eyni missiyada tək modelə normallaşdırılacaq.');
+            }
+            if (!advice.length) {
+                advice.push('Runtime görünüşünə görə bu komanda hazırdır. Missiyanı deploy edib timeline-dan axını izləyə bilərsən.');
+            }
+            return advice;
+        }
+
+        function renderRuntimeDiagnostics(diag) {
+            runtimeDiagnostics.innerHTML = '';
+            runtimeIntel.textContent = '';
+            const caps = (diag && diag.backend_capabilities) || {};
+            const pills = [
+                ['Provider', diag?.provider || 'unknown'],
+                ['Model', diag?.model || 'unknown'],
+                ['Desktop', diag?.desktop_mode || (diag?.native_desktop_available ? 'native-ready' : 'native-missing')],
+                ['Parallelism', caps.request_parallelism || 'unknown'],
+                ['Mixed Models', caps.mixed_model_missions || 'unknown']
+            ];
+            pills.forEach(([label, value]) => {
+                const div = document.createElement('div');
+                div.className = 'diag-pill';
+                div.innerHTML = `<strong>${label}</strong><span>${value}</span>`;
+                runtimeDiagnostics.appendChild(div);
+            });
+
+            const notes = (caps.notes || []).map(item => `- ${item}`).join('\n');
+            const advice = buildDiagnosticAdvice(diag).map(item => `- ${item}`).join('\n');
+            const desktopLine = diag?.desktop_hint || (
+                diag?.native_desktop_available
+                    ? 'Native desktop stack detected.'
+                    : 'Native desktop stack missing. Embedded desktop mode is not available.'
+            );
+            const fallbackLine = diag?.desktop_fallback_allowed
+                ? 'Browser fallback is enabled by environment.'
+                : 'Browser fallback is disabled by environment.';
+            runtimeIntel.textContent = [desktopLine, fallbackLine, notes, advice].filter(Boolean).join('\n');
+        }
+
+        function renderList(items) {
+            if (!items || !items.length) return '';
+            return `<ul class="report-list">${items.map(item => `<li>${item}</li>`).join('')}</ul>`;
+        }
+
+        function addReportCard(agent, report) {
+            if (!currentAgentBubbles[agent]) addMessage(agent, report.summary || '');
+            const bubble = currentAgentBubbles[agent].querySelector('.speech-bubble');
+            const card = document.createElement('div');
+            card.className = 'report-card';
+            let html = `<strong>Report Card</strong>`;
+            if (report.summary) html += `<div>${report.summary}</div>`;
+            if (report.findings?.length) html += `<div><strong>Findings</strong>${renderList(report.findings)}</div>`;
+            if (report.completed_actions?.length) html += `<div><strong>Completed</strong>${renderList(report.completed_actions)}</div>`;
+            if (report.evidence?.length) html += `<div><strong>Evidence</strong>${renderList(report.evidence)}</div>`;
+            if (report.open_questions?.length) html += `<div><strong>Open Questions</strong>${renderList(report.open_questions)}</div>`;
+            card.innerHTML = html;
+            bubble.appendChild(card);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function formatRound(ev) {
+            const round = ev?.meta?.round;
+            return round ? ` [round ${round}]` : '';
+        }
+
+        function setMissionRunning(running) {
+            goBtn.disabled = running;
+            input.disabled = running;
+            cancelBtn.disabled = !running;
+            refreshActionButtons();
+        }
+
+        function recordMissionEvent(ev) {
+            if (isReplaying) return;
+            currentMissionEvents.push(cloneEvent(ev));
+            lastMissionRecord = {
+                mission: missionSubtitle.textContent,
+                title: missionTitle.textContent,
+                recordedAt: new Date().toISOString(),
+                events: currentMissionEvents.map(cloneEvent)
+            };
+            refreshActionButtons();
+        }
+
+        function clearLivePanels() {
+            chat.innerHTML = `
+                <div class="info-msg">
+                    <div class="info-tag">Team assembled. Define the mission and deploy the board.</div>
+                </div>
+            `;
+            boardLog.textContent = '-- board feed ready --';
+            missionLog.textContent = '-- mission log started --';
+            timelineLog.innerHTML = '';
+            currentAgentBubbles = {};
+            thoughtBubbles = {};
+            pendingTools = {};
+        }
+
+        function resetBoardState(statusText = 'Awaiting Mission', subtitleText = 'Deploy a mission to watch agents negotiate, execute, and report back on the board.') {
+            clearLivePanels();
+            missionTitle.textContent = statusText;
+            missionSubtitle.textContent = subtitleText;
+            syncBoardFromTeam();
+        }
+
+        function setSeatProgress(agent, stage) {
+            const details = stageDetails(stage);
+            const fill = document.getElementById(`seat-progress-fill-${agent}`);
+            const label = document.getElementById(`seat-stage-${agent}`);
+            if (fill) fill.style.width = `${details.progress}%`;
+            if (label) label.textContent = details.label;
+        }
+
+        function ensureSeat(agent, role = 'Worker') {
+            if (agent === 'Supervisor') return;
+            if (document.getElementById(`seat-${agent}`)) return;
+
+            const pos = workerSeatPositions[workerSeats.children.length % workerSeatPositions.length];
+            const seat = document.createElement('div');
+            seat.className = 'seat';
+            seat.id = `seat-${agent}`;
+            Object.assign(seat.style, pos);
+            seat.innerHTML = `
+                <div class="seat-top">
+                    <div class="seat-avatar">${AVATARS[agent] || '🤖'}</div>
+                    <div class="seat-title">
+                        <strong>${agent.replace('_', ' #')}</strong>
+                        <span id="seat-role-${agent}">${role}</span>
+                    </div>
+                    <div class="status-pill status-idle" id="seat-status-${agent}">idle</div>
+                </div>
+                <div class="seat-task" id="seat-task-${agent}">No assignment yet.</div>
+                <div class="seat-progress">
+                    <div class="seat-progress-meta">
+                        <span class="seat-stage" id="seat-stage-${agent}">Idle</span>
+                        <span id="seat-progress-label-${agent}">0%</span>
+                    </div>
+                    <div class="seat-progress-track">
+                        <div class="seat-progress-fill" id="seat-progress-fill-${agent}"></div>
+                    </div>
+                </div>
+                <div class="seat-last" id="seat-last-${agent}">Waiting for orders.</div>
+            `;
+            workerSeats.appendChild(seat);
+            seatState[agent] = { role, status: 'idle' };
+        }
+
+        function setSeatState(agent, { role, status, task, last }) {
+            if (agent !== 'Supervisor') ensureSeat(agent, role || 'Worker');
+            seatState[agent] = {
+                ...(seatState[agent] || {}),
+                ...(role ? { role } : {}),
+                ...(status ? { status } : {}),
+                ...(task ? { task } : {}),
+                ...(last ? { last } : {})
+            };
+            if (role && document.getElementById(`seat-role-${agent}`)) {
+                document.getElementById(`seat-role-${agent}`).textContent = role;
+            }
+            if (task && document.getElementById(`seat-task-${agent}`)) {
+                document.getElementById(`seat-task-${agent}`).textContent = task;
+            }
+            if (last && document.getElementById(`seat-last-${agent}`)) {
+                document.getElementById(`seat-last-${agent}`).textContent = last;
+            }
+            if (status && document.getElementById(`seat-status-${agent}`)) {
+                const pill = document.getElementById(`seat-status-${agent}`);
+                pill.textContent = status;
+                pill.className = `status-pill status-${status}`;
+                setSeatProgress(agent, status);
+                const progressLabel = document.getElementById(`seat-progress-label-${agent}`);
+                if (progressLabel) progressLabel.textContent = `${stageDetails(status).progress}%`;
+            }
+        }
+
+        function syncBoardFromTeam() {
+            workerSeats.innerHTML = '';
+            seatState = {};
+            const supRole = document.getElementById('sup-role').value.trim() || 'Supervisor';
+            document.getElementById('supervisor-role-label').textContent = supRole;
+            setSeatState('Supervisor', {
+                status: 'idle',
+                task: 'Awaiting a mission from the commander.',
+                last: 'Will brief the board when deployment starts.'
+            });
+            setSeatProgress('Supervisor', 'idle');
+
+            document.querySelectorAll('.worker-entry').forEach((el, idx) => {
+                const agent = `Worker_${idx + 1}`;
+                const role = el.querySelector('.work-role').value.trim() || `Worker ${idx + 1}`;
+                ensureSeat(agent, role);
+                setSeatState(agent, {
+                    role,
+                    status: 'idle',
+                    task: 'No assignment yet.',
+                    last: 'Standing by at the table.'
+                });
+            });
+        }
+
+        async function init() {
+            availableModels = await pywebview.api.get_models();
+            const diagnostics = await pywebview.api.get_runtime_diagnostics();
+            const supModel = document.getElementById('sup-model');
+            const models = availableModels.length ? availableModels : [''];
+            models.forEach(m => supModel.add(new Option(m || 'default model', m)));
+
+            // Load templates
+            try {
+                allTemplates = await pywebview.api.get_templates();
+                allTemplates.forEach(t => {
+                    const opt = new Option(t.name.replace(/_/g, ' ').toUpperCase(), t.name);
+                    templatePicker.add(opt);
+                });
+            } catch(e) {}
+
+            // Load plugins
+            try {
+                const pluginsData = await pywebview.api.get_plugins();
+                renderPluginPills(pluginsData);
+            } catch(e) {}
+
+            addWorker('Developer');
+            addWorker('Tester');
+            syncBoardFromTeam();
+            renderRuntimeDiagnostics(diagnostics);
+            addInfo(`Runtime ready: ${(diagnostics && diagnostics.provider) || 'unknown'} / ${(diagnostics && diagnostics.model) || 'unknown'}`);
+            writeTimeline('mission', `Runtime initialized — ${(diagnostics && diagnostics.provider) || 'unknown'} / ${(diagnostics && diagnostics.model) || 'unknown'}`);
+            refreshActionButtons();
+            loadMissionHistory();
+        }
+
+        function addWorker(role = '') {
+            const list = document.getElementById('workers-list');
+            const div = document.createElement('div');
+            div.className = 'worker-entry';
+            const modelOpts = (availableModels.length ? availableModels : [''])
+                .map(m => `<option value="${m}">${m || 'default model'}</option>`)
+                .join('');
+            div.innerHTML = `
+                <input type="text" class="work-role" value="${role}" placeholder="Worker role" style="width:160px">
+                <select class="work-model">${modelOpts}</select>
+                <button class="secondary" style="min-height:36px; font-size:14px; padding:6px 10px" onclick="this.parentElement.remove(); syncBoardFromTeam();">Remove</button>
+            `;
+            list.appendChild(div);
+            syncBoardFromTeam();
+        }
+
+        function collectTeam() {
+            const supData = {
+                role: document.getElementById('sup-role').value.trim() || 'Supervisor',
+                model: document.getElementById('sup-model').value
+            };
+            const workersData = [];
+            document.querySelectorAll('.worker-entry').forEach(el => {
+                const role = el.querySelector('.work-role').value.trim();
+                if (!role) return;
+                workersData.push({ role, model: el.querySelector('.work-model').value });
+            });
+            return { supData, workersData };
+        }
+
+        function updateTeam() {
+            syncBoardFromTeam();
+            const { supData, workersData } = collectTeam();
+            pywebview.api.update_roles(supData, workersData).then(r => {
+                if (r.status === 'success') {
+                    appendBoardLog(`Team synchronized: ${supData.role} + ${workersData.length} worker(s).`);
+                    writeToLog(`TEAM SYNC: ${supData.role} + ${workersData.length} worker(s)`);
+                    writeTimeline('mission', `Team synced: ${supData.role} + ${workersData.length} worker(s)`);
+                } else {
+                    addInfo(`Desktop error: ${r.message}`);
+                }
+            });
+        }
+
+        function addMessage(agent, text, isUser = false) {
+            if (currentAgentBubbles[agent] && !isUser) {
+                const bubble = currentAgentBubbles[agent].querySelector('.text-content');
+                bubble.textContent += text;
+                chat.scrollTop = chat.scrollHeight;
+                return;
+            }
+
+            const div = document.createElement('div');
+            div.className = 'agent-container' + (isUser ? ' msg-user' : '');
+            div.innerHTML = `
+                <div class="avatar-wrap">
+                    <div class="avatar">${AVATARS[agent] || '🤖'}</div>
+                    ${isUser ? '' : `
+                        <div class="status-bars">
+                            <div class="bar"><div class="bar-fill hp"></div></div>
+                            <div class="bar"><div class="bar-fill mana"></div></div>
+                        </div>
+                    `}
+                    <div class="agent-label">${isUser ? 'YOU' : agent.split('_')[0]}</div>
+                </div>
+                <div class="speech-bubble">
+                    <div class="agent-name">${isUser ? 'COMMANDER' : agent.replace('_', ' #')}</div>
+                    <div class="text-content"></div>
+                </div>
+            `;
+            chat.appendChild(div);
+            div.querySelector('.text-content').textContent = text;
+            chat.scrollTop = chat.scrollHeight;
+            if (!isUser) currentAgentBubbles[agent] = div;
+        }
+
+        function addThought(agent, text) {
+            if (!currentAgentBubbles[agent]) addMessage(agent, '');
+            const speechBubble = currentAgentBubbles[agent].querySelector('.speech-bubble');
+            const textContent = speechBubble.querySelector('.text-content');
+            if (!thoughtBubbles[agent]) {
+                const bubble = document.createElement('div');
+                bubble.className = 'thought-bubble';
+                bubble.innerHTML = '<strong>Thinking:</strong> <span class="thought-content"></span>';
+                speechBubble.insertBefore(bubble, textContent);
+                thoughtBubbles[agent] = bubble;
+            }
+            thoughtBubbles[agent].querySelector('.thought-content').textContent += text;
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function addTool(agent, name) {
+            if (!currentAgentBubbles[agent]) addMessage(agent, '');
+            const bubble = currentAgentBubbles[agent].querySelector('.speech-bubble');
+            const tool = document.createElement('div');
+            tool.className = 'tool-call';
+            tool.innerHTML = `<span class="tool-icon-anim">${TOOL_ICONS[name] || '⚙'}</span> Using ${name}...`;
+            bubble.appendChild(tool);
+            if (!pendingTools[agent]) pendingTools[agent] = [];
+            pendingTools[agent].push(tool);
+        }
+
+        function completeTool(agent, name, result) {
+            const queue = pendingTools[agent] || [];
+            const tool = queue.shift();
+            if (!tool) return;
+            const preview = (result || '').replace(/\s+/g, ' ').trim();
+            tool.innerHTML = `${TOOL_ICONS[name] || '✅'} ${name} finished${preview ? ': ' + preview.slice(0, 140) : '.'}`;
+        }
+
+        function addInfo(text) {
+            currentAgentBubbles = {};
+            thoughtBubbles = {};
+            const div = document.createElement('div');
+            div.className = 'info-msg';
+            div.innerHTML = `<div class="info-tag">${text}</div>`;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        function send() {
+            const val = input.value.trim();
+            if (!val || goBtn.disabled || isReplaying) return;
+
+            syncBoardFromTeam();
+            missionTitle.textContent = 'Mission Live';
+            missionSubtitle.textContent = val;
+
+            input.value = '';
+            setMissionRunning(true);
+            currentMissionEvents = [];
+            clearLivePanels();
+            resetMissionStats();
+            addMessage('User', val, true);
+            appendBoardLog(`Commander deployed mission: ${val}`);
+            writeToLog(`COMMANDER: ${val}`);
+            writeTimeline('mission', `Mission deployed: ${val.slice(0, 80)}`);
+
+            setSeatState('Supervisor', {
+                status: 'active',
+                task: 'Planning the mission and assigning the board.',
+                last: 'Supervisor is briefing the team.'
+            });
+
+            const { supData, workersData } = collectTeam();
+            const selectedTemplate = templatePicker.value || null;
+            pywebview.api.send_message(val, supData, workersData, selectedTemplate).then(r => {
+                if (r && r.status !== 'started') {
+                    addInfo('Mission could not start.');
+                    setMissionRunning(false);
+                }
+            });
+        }
+
+        function cancelMission() {
+            if (cancelBtn.disabled) return;
+            pywebview.api.cancel_mission().then(r => {
+                addInfo(r.message || 'Cancellation requested.');
+                writeTimeline('interrupt', `Commander requested cancellation: ${r.message || r.status}`);
+                if (r.status === 'idle') {
+                    setMissionRunning(false);
+                }
+            });
+        }
+
+        function exportMissionLog() {
+            if (!lastMissionRecord) return;
+            const payload = JSON.stringify(lastMissionRecord, null, 2);
+            const blob = new Blob([payload], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            link.href = url;
+            link.download = `apexforge-mission-${stamp}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            appendBoardLog('Mission log exported.');
+            writeTimeline('done', 'Mission log exported to JSON.');
+        }
+
+        function replayLastMission() {
+            if (!lastMissionRecord || !lastMissionRecord.events?.length || isReplaying) return;
+            if (replayTimer) clearTimeout(replayTimer);
+            isReplaying = true;
+            goBtn.disabled = true;
+            input.disabled = true;
+            cancelBtn.disabled = true;
+            refreshActionButtons();
+            resetBoardState('Mission Replay', lastMissionRecord.mission || 'Replaying the last recorded mission.');
+            appendBoardLog('Replay started from the last recorded mission.');
+            writeTimeline('mission', 'Replay started.');
+
+            const events = lastMissionRecord.events.map(cloneEvent);
+            let index = 0;
+            const playNext = () => {
+                if (index >= events.length) {
+                    isReplaying = false;
+                    replayTimer = null;
+                    goBtn.disabled = false;
+                    input.disabled = false;
+                    cancelBtn.disabled = true;
+                    addInfo('Replay finished.');
+                    writeTimeline('done', 'Replay finished.');
+                    refreshActionButtons();
+                    return;
+                }
+                handleEvent(events[index], { replay: true });
+                index += 1;
+                replayTimer = window.setTimeout(playNext, 220);
+            };
+            playNext();
+        }
+
+        function handleEvent(ev, options = {}) {
+            if (!options.replay) {
+                recordMissionEvent(ev);
+            }
+            if (ev.type === 'agent_chat') {
+                addMessage(ev.agent, ev.data);
+                setSeatState(ev.agent, { status: ev.agent === 'Supervisor' ? 'active' : 'assigned', last: ev.data.slice(0, 120) });
+                appendBoardLog(`${ev.agent}${formatRound(ev)}: ${ev.data}`);
+                writeToLog(`${ev.agent}${formatRound(ev)}: ${ev.data.slice(0, 80)}`);
+            } else if (ev.type === 'thought') {
+                addThought(ev.agent, ev.data);
+                setSeatState(ev.agent, { status: 'active', last: `Thinking: ${ev.data.slice(0, 90)}` });
+                writeToLog(`THOUGHT ${ev.agent}${formatRound(ev)}: ${ev.data.slice(0, 80)}`);
+            } else if (ev.type === 'assignment') {
+                missionWorkerCount = Math.max(missionWorkerCount, parseInt(ev.agent.replace('Worker_', '') || 0) || missionWorkerCount);
+                setSeatState(ev.agent, {
+                    role: ev.data.role,
+                    status: 'assigned',
+                    task: ev.data.task,
+                    last: 'Received direct order from supervisor.'
+                });
+                appendBoardLog(`${ev.agent}${formatRound(ev)} assigned: ${ev.data.task}`);
+                writeToLog(`ASSIGN ${ev.agent}${formatRound(ev)}: ${ev.data.task}`);
+                writeTimeline('assignment', `${ev.agent}${formatRound(ev)} → ${ev.data.task.slice(0, 60)}`);
+            } else if (ev.type === 'worker_status') {
+                const workerStage = ev.data.status === 'completed' ? 'reporting' : 'active';
+                setSeatState(ev.agent, {
+                    status: workerStage,
+                    task: ev.data.task || undefined,
+                    last: ev.data.status === 'completed' ? 'Submitted report to supervisor.' : 'Working on current assignment.'
+                });
+            } else if (ev.type === 'report') {
+                setSeatState(ev.agent, {
+                    status: 'completed',
+                    last: ev.data.summary.slice(0, 120)
+                });
+                addReportCard(ev.agent, ev.data);
+                appendBoardLog(`${ev.agent}${formatRound(ev)} report: ${ev.data.summary.slice(0, 160)}`);
+                writeToLog(`REPORT ${ev.agent}${formatRound(ev)}: ${ev.data.summary.slice(0, 100)}`);
+                writeTimeline('report', `${ev.agent}${formatRound(ev)}: ${ev.data.summary.slice(0, 60)}`);
+            } else if (ev.type === 'review') {
+                const round = ev.meta?.round || 0;
+                missionRoundCount = Math.max(missionRoundCount, round);
+                setSeatState('Supervisor', {
+                    status: ev.data.status === 'complete' ? 'completed' : 'review',
+                    last: ev.data.summary.slice(0, 120),
+                    task: ev.data.status === 'complete' ? 'Final answer ready.' : 'Reviewing and issuing revisions.'
+                });
+                appendBoardLog(`Supervisor review${formatRound(ev)}: ${ev.data.summary}`);
+                writeToLog(`REVIEW${formatRound(ev)}: ${ev.data.summary.slice(0, 100)}`);
+                writeTimeline('review', `Supervisor review${formatRound(ev)}: ${ev.data.status}`);
+            } else if (ev.type === 'info') {
+                addInfo(ev.data);
+                const cat = ev.meta?.category || 'default';
+                appendBoardLog(`${ev.meta?.category ? '[' + ev.meta.category + '] ' : ''}${ev.data}`);
+                writeToLog(`INFO${formatRound(ev)}${ev.meta?.category ? ' [' + ev.meta.category + ']' : ''}: ${ev.data}`);
+                const tlCat = (cat === 'planning' || cat === 'execution' || cat === 'mission' || cat === 'revision' || cat === 'report' || cat === 'review') ? cat : 'default';
+                writeTimeline(tlCat, ev.data.slice(0, 80));
+                if (ev.data.toLowerCase().includes('mission accomplished')) {
+                    document.getElementById('victory-overlay').style.display = 'flex';
+                }
+            } else if (ev.type === 'tool_call') {
+                missionToolCallCount++;
+                addTool(ev.agent, ev.data.name);
+                setSeatState(ev.agent, { status: 'active', last: `Using tool: ${ev.data.name}${ev.meta?.primary === false ? ' (fallback)' : ''}` });
+                writeToLog(`TOOL ${ev.agent}${formatRound(ev)}: ${ev.data.name}${ev.meta?.primary === false ? ' [fallback]' : ''}`);
+            } else if (ev.type === 'tool_result') {
+                completeTool(ev.agent, ev.data.name, ev.data.result);
+                setSeatState(ev.agent, { last: `${ev.data.name} finished${ev.meta?.primary === false ? ' via fallback' : ''}.` });
+                writeToLog(`TOOL DONE ${ev.agent}${formatRound(ev)}: ${ev.data.name}${ev.meta?.primary === false ? ' [fallback]' : ''}`);
+            } else if (ev.type === 'final') {
+                currentAgentBubbles = {};
+                thoughtBubbles = {};
+                pendingTools = {};
+                addMessage('Supervisor', ev.data);
+                setSeatState('Supervisor', {
+                    status: 'completed',
+                    task: 'Mission closed.',
+                    last: ev.data.slice(0, 120)
+                });
+                appendBoardLog(`FINAL: ${ev.data}`);
+                writeToLog(`FINAL: ${ev.data.slice(0, 120)}`);
+                writeTimeline('done', `Final answer delivered — ${ev.data.slice(0, 50)}`);
+                showMissionStats();
+            } else if (ev.type === 'done') {
+                setMissionRunning(false);
+                input.focus();
+                addInfo('Mission phase complete.');
+                writeTimeline('done', 'Mission phase complete.');
+                loadMissionHistory();
+            } else if (ev.type === 'interrupted') {
+                setMissionRunning(false);
+                addInfo(`INTERRUPTED: ${ev.data || 'Mission was interrupted by the commander.'}`);
+                setSeatState('Supervisor', {
+                    status: 'idle',
+                    task: 'Mission interrupted.',
+                    last: (ev.data || 'Commander stopped the mission.').slice(0, 120)
+                });
+                writeToLog(`INTERRUPTED: ${ev.data || 'Mission interrupted.'}`);
+                writeTimeline('interrupt', ev.data || 'Mission interrupted.');
+                loadMissionHistory();
+            } else if (ev.type === 'error') {
+                addInfo(`ALERT${ev.meta?.code ? ' [' + ev.meta.code + ']' : ''}: ${ev.data}`);
+                setSeatState('Supervisor', { status: 'error', last: ev.data.slice(0, 120) });
+                writeToLog(`ERROR${ev.meta?.code ? ' [' + ev.meta.code + ']' : ''}: ${ev.data}`);
+                setMissionRunning(false);
+                writeTimeline('error', ev.data.slice(0, 80));
+            }
+        }
+
+        // ── Template picker ───────────────────────────────────────────────────
+
+        function applyTemplate() {
+            const name = templatePicker.value;
+            if (!name) {
+                templateHint.style.display = 'none';
+                defaultHint.style.display = '';
+                return;
+            }
+            const tmpl = allTemplates.find(t => t.name === name);
+            if (!tmpl) return;
+
+            document.getElementById('sup-role').value = tmpl.supervisor_role || 'Supervisor';
+
+            const list = document.getElementById('workers-list');
+            list.innerHTML = '';
+            (tmpl.workers || []).forEach(role => addWorker(role));
+            syncBoardFromTeam();
+
+            if (tmpl.hint) {
+                templateHint.textContent = `💡 ${tmpl.hint}`;
+                templateHint.style.display = '';
+                defaultHint.style.display = 'none';
+            } else {
+                templateHint.style.display = 'none';
+                defaultHint.style.display = '';
+            }
+        }
+
+        // ── Plugin pills ──────────────────────────────────────────────────────
+
+        function renderPluginPills(pluginsData) {
+            const loaded = (pluginsData && pluginsData.loaded) || [];
+            const errors = (pluginsData && pluginsData.errors) || [];
+            if (!loaded.length && !errors.length) return;
+            const pill = document.createElement('div');
+            pill.className = 'diag-pill';
+            const errPart = errors.length ? ` · <span style="color:var(--danger)">${errors.length} err</span>` : '';
+            pill.innerHTML = `<strong>Plugins</strong><span>${loaded.length} loaded${errPart}</span>`;
+            pill.title = loaded.map(p => p.name).join(', ');
+            runtimeDiagnostics.appendChild(pill);
+        }
+
+        // ── Enhanced timeline ─────────────────────────────────────────────────
+
+        const TL_CONFIG = {
+            mission:    { icon: '🚀', cls: 'tl-mission' },
+            planning:   { icon: '🧠', cls: 'tl-planning' },
+            assignment: { icon: '📋', cls: 'tl-assignment' },
+            execution:  { icon: '⚡', cls: 'tl-planning' },
+            report:     { icon: '📊', cls: 'tl-report' },
+            review:     { icon: '🔍', cls: 'tl-review' },
+            revision:   { icon: '🔁', cls: 'tl-review' },
+            done:       { icon: '✅', cls: 'tl-done' },
+            error:      { icon: '🚨', cls: 'tl-error' },
+            interrupt:  { icon: '⛔', cls: 'tl-error' },
+            default:    { icon: '•',  cls: '' },
+        };
+
+        function writeTimeline(category, text) {
+            const cfg = TL_CONFIG[category] || TL_CONFIG.default;
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const entry = document.createElement('div');
+            entry.className = 'tl-entry';
+            entry.innerHTML = `
+                <span class="tl-icon">${cfg.icon}</span>
+                <span class="tl-time">${time}</span>
+                <span class="tl-text ${cfg.cls}">${text}</span>
+            `;
+            timelineLog.appendChild(entry);
+            timelineLog.scrollTop = timelineLog.scrollHeight;
+        }
+
+        // ── Mission stats ─────────────────────────────────────────────────────
+
+        let missionRoundCount = 0;
+        let missionToolCallCount = 0;
+        let missionWorkerCount = 0;
+        let missionStartTime = null;
+
+        function resetMissionStats() {
+            missionRoundCount = 0;
+            missionToolCallCount = 0;
+            missionWorkerCount = 0;
+            missionStartTime = Date.now();
+            missionStats.style.display = 'none';
+            missionStats.innerHTML = '';
+        }
+
+        function showMissionStats() {
+            const elapsed = missionStartTime ? Math.round((Date.now() - missionStartTime) / 1000) : 0;
+            const statsData = [
+                ['Rounds', missionRoundCount],
+                ['Workers', missionWorkerCount],
+                ['Tool calls', missionToolCallCount],
+                ['Duration', `${elapsed}s`],
+            ];
+            missionStats.innerHTML = statsData
+                .map(([k, v]) => `<div class="stat-pill"><strong>${v}</strong> ${k}</div>`)
+                .join('');
+            missionStats.style.display = 'flex';
+        }
+
+        // ── Mission history ───────────────────────────────────────────────────
+
+        async function loadMissionHistory() {
+            try {
+                const history = await pywebview.api.get_mission_history(8);
+                renderMissionHistory(history);
+            } catch(e) {
+                missionHistoryList.textContent = '-- unavailable --';
+            }
+        }
+
+        function renderMissionHistory(history) {
+            if (!history || !history.length) {
+                missionHistoryList.innerHTML = '<div style="color:var(--muted);font-size:11px">No past missions yet.</div>';
+                return;
+            }
+            missionHistoryList.innerHTML = '';
+            history.forEach(m => {
+                const row = document.createElement('div');
+                row.className = 'history-row';
+                const statusCls = `hr-status-${m.status || 'completed'}`;
+                const ts = m.created_at ? new Date(m.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+                row.innerHTML = `
+                    <div class="hr-prompt">${(m.prompt || '').slice(0, 80)}</div>
+                    <div class="hr-meta">
+                        <span class="${statusCls}">${m.status || 'completed'}</span>
+                        <span>${ts}</span>
+                    </div>
+                `;
+                row.title = m.prompt || '';
+                row.onclick = () => { input.value = m.prompt || ''; input.focus(); };
+                missionHistoryList.appendChild(row);
+            });
+        }
+
+        window.addEventListener('pywebviewready', init);
+        input.addEventListener('keypress', e => { if (e.key === 'Enter') send(); });
+        document.getElementById('sup-role').addEventListener('input', syncBoardFromTeam);
+    </script>
+</body>
+</html>
