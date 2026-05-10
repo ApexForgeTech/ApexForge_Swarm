@@ -34,6 +34,22 @@ class RequestRouter:
             f"{user_message}"
         )
 
+    def should_inherit_execution_context(self, user_message: str) -> bool:
+        normalized = normalize_text(user_message)
+        if not normalized or self.looks_like_tool_required_task(user_message):
+            return False
+        if self._is_confirmation_message(user_message):
+            return True
+
+        tokens = re.findall(r"[a-z0-9_]+", normalized)
+        follow_up_cues = {
+            "yap", "random", "devam", "again", "retry", "tekrar",
+            "olmadi", "olusturulmadi", "goremiyorum", "gorunmur", "yox",
+        }
+        if normalized in {"random yap", "devam et", "yeniden yap"}:
+            return True
+        return len(tokens) <= 4 and any(token in follow_up_cues for token in tokens)
+
     def route_simple_request(
         self,
         user_message: str,
@@ -147,6 +163,7 @@ class RequestRouter:
             "do it", "run it", "execute it", "execute", "proceed", "continue",
             "okay do it", "ok do it", "do that", "go ahead", "et", "ele",
             "islet", "calistir", "bunu et", "bunu calistir", "day it",
+            "yap", "devam et",
         }
         return normalized in confirmations
 

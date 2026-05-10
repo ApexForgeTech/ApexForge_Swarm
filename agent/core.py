@@ -28,6 +28,7 @@ class Agent:
         self.tool_schemas: List[Dict[str, Any]] = []
         self.messages: List[Dict[str, Any]] = []
         self.pending_shell_command: Optional[str] = None
+        self.pending_execution_context: Optional[str] = None
         self.llm = create_llm_backend(config)
         self.router = RequestRouter(config, self.memory)
         self.tool_executor = ToolExecutor(self.tools, logger)
@@ -111,6 +112,17 @@ class Agent:
         except Exception:
             self.messages = [system] + self.messages[-6:]
 
+    def _compose_execution_followup(self, user_message: str) -> str:
+        context = (self.pending_execution_context or "").strip()
+        if not context:
+            return user_message
+        return (
+            "[Continuation of an earlier execution task on the real machine. "
+            "Keep using tools and finish the requested work.]\n\n"
+            f"Earlier task:\n{context}\n\n"
+            f"Follow-up instruction:\n{user_message}"
+        )
+
     def chat(
         self,
         user_message: str,
@@ -128,11 +140,20 @@ class Agent:
         )
         self._maybe_compress()
 
-        msg = {"role": "user", "content": self.router.prepare_user_message(user_message, images=images)}
+        inherit_execution_context = bool(self.pending_execution_context and self.router.should_inherit_execution_context(user_message))
+        effective_user_message = self._compose_execution_followup(user_message) if inherit_execution_context else user_message
+        must_use_tools = (inherit_execution_context or self.router.looks_like_tool_required_task(user_message)) and not images
+
+        if self.router.looks_like_tool_required_task(user_message):
+            self.pending_execution_context = user_message
+        elif not inherit_execution_context and not self.router._is_confirmation_message(user_message):
+            self.pending_execution_context = None
+
+        msg = {"role": "user", "content": self.router.prepare_user_message(effective_user_message, images=images)}
         if images:
             msg["images"] = images
 
-        direct_tool = self.router.route_simple_request(user_message, self.pending_shell_command)
+        direct_tool = self.router.route_simple_request(effective_user_message, self.pending_shell_command)
         if direct_tool and not images:
             yield from self._run_direct_tool(user_message, direct_tool["name"], direct_tool["args"])
             return
@@ -152,10 +173,13 @@ class Agent:
                 return
 
         self.messages.append(msg)
+        tool_used_this_turn = False
+        enforced_tool_retry = False
 
         for _ in range(self.config.agent.max_iterations):
             full_content = ""
             tool_calls: List[LLMToolCall] = []
+            defer_model_text = must_use_tools
 
             try:
                 stream = self.llm.chat_stream(
@@ -174,6 +198,8 @@ class Agent:
                     if chunk.content:
                         content = chunk.content
                         full_content += content
+                        if defer_model_text:
+                            continue
 
                         if "<thought>" in content:
                             is_thinking = True
@@ -225,7 +251,22 @@ class Agent:
                 ]
             self.messages.append(assistant_msg)
             if not tool_calls:
+                if must_use_tools and not tool_used_this_turn and not enforced_tool_retry:
+                    enforced_tool_retry = True
+                    self.messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "[Execution reminder: this task depends on the real machine/files. "
+                                "You must use tools now. Do not claim files were created or commands ran "
+                                "unless a tool result proves it.]"
+                            ),
+                        }
+                    )
+                    continue
                 self.pending_shell_command = self.router.extract_shell_command(full_content)
+                if full_content and defer_model_text:
+                    yield text_event(full_content)
                 log_event(
                     logger,
                     logging.INFO,
@@ -251,6 +292,7 @@ class Agent:
                     return
 
                 execution = self._execute_tool_with_fallback(name, args)
+                tool_used_this_turn = True
                 for attempt in execution["attempts"][1:]:
                     yield tool_call_event(attempt["name"], attempt["args"], primary=False)
                     yield tool_result_event(attempt["name"], attempt["result"], primary=False)
