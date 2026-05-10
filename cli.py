@@ -62,7 +62,7 @@ SLASH_CMDS = [
     "/help", "/exit", "/quit", "/status", "/clear", "/new",
     "/model", "/models", "/skills", "/memory", "/reload",
     "/sessions", "/resume", "/export", "/history", "/tokens",
-    "/profile", "/profiles", "/whoami",
+    "/profile", "/profiles", "/whoami", "/compact",
 ]
 
 
@@ -445,6 +445,14 @@ def run_cli(
                     session.save_tool(d["name"], d["result"], agent.messages)
                     live.update(Spinner("dots2", text="  thinking…"))
 
+                elif t == "compact":
+                    d = event["data"]
+                    live.update(Text(""))
+                    console.print(
+                        f"[dim]  ✓ Auto-compacted at turn {d['turn']} "
+                        f"(every {config.compact.auto_compact_after} messages)[/dim]"
+                    )
+
                 elif t == "interrupted":
                     partial = event.get("data", "")
                     live.update(Markdown((partial or "") + "\n\n[dim]⚠ Interrupted[/dim]"))
@@ -559,6 +567,23 @@ def _handle_slash(cmd, arg, agent, config, profile, session, profile_name, creds
     elif cmd == "/clear":
         agent.clear()
         console.print("[green]✓ Cleared.[/green]")
+
+    elif cmd == "/compact":
+        msgs = [m for m in agent.messages if m.get("role") != "system"]
+        if len(msgs) < 2:
+            console.print("[dim]  Nothing to compact yet.[/dim]")
+            return
+        with console.status("[dim]  Compacting conversation…[/dim]", spinner="dots"):
+            summary = agent.compact()
+        if summary:
+            console.print(Panel(
+                Markdown(summary),
+                title="[bold dim]✓ Compacted[/bold dim]",
+                border_style="dim",
+                expand=False,
+            ))
+        else:
+            console.print("[yellow]  Compact failed — history unchanged.[/yellow]")
 
     elif cmd == "/model":
         if not arg:
@@ -690,6 +715,7 @@ def _print_help():
         ("/status", "Profile, session, model, token usage"),
         ("/whoami", "Show your credentials and usage"),
         ("/clear", "Clear conversation history"),
+        ("/compact", "Summarize & compress conversation history"),
         ("/new", "Start a new session (saves memories first)"),
         ("/model [NAME]", "Show or switch active model"),
         ("/models", "List models from the active backend"),

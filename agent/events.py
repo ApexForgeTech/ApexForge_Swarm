@@ -74,6 +74,10 @@ def done_event() -> Dict[str, Any]:
     return make_event("done", None)
 
 
+def compact_event(summary: str, *, turn: int, auto: bool = False) -> Dict[str, Any]:
+    return make_event("compact", {"summary": summary, "turn": turn, "auto": auto})
+
+
 def info_event(message: str, *, category: Optional[str] = None, round_index: Optional[int] = None) -> Dict[str, Any]:
     meta: Dict[str, Any] = {}
     if category:

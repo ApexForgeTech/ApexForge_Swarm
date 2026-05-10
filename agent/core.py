@@ -5,7 +5,7 @@ from typing import Any, Dict, Generator, List, Optional
 
 from .config import Config
 from .errors import ApexError
-from .events import done_event, error_event, interrupted_event, text_event, thought_event, tool_call_event, tool_result_event
+from .events import compact_event, done_event, error_event, interrupted_event, text_event, thought_event, tool_call_event, tool_result_event
 from .llm_backend import LLMToolCall, create_llm_backend, get_backend_capabilities
 from .logging_utils import log_event
 from .memory import MemorySystem
@@ -29,6 +29,7 @@ class Agent:
         self.messages: List[Dict[str, Any]] = []
         self.pending_shell_command: Optional[str] = None
         self.pending_execution_context: Optional[str] = None
+        self._messages_since_compact: int = 0
         self.llm = create_llm_backend(config)
         self.router = RequestRouter(config, self.memory)
         self.tool_executor = ToolExecutor(self.tools, logger)
@@ -112,6 +113,35 @@ class Agent:
         except Exception:
             self.messages = [system] + self.messages[-6:]
 
+    def compact(self) -> str:
+        """Summarize full conversation into a single history message, replacing the message list."""
+        system = self.messages[0]
+        non_system = [m for m in self.messages[1:] if m.get("content")]
+        if len(non_system) < 2:
+            return ""
+        text = "\n".join(
+            f"{m['role'].upper()}: {str(m.get('content', ''))[:600]}"
+            for m in non_system
+        )
+        try:
+            summary = self.llm.chat_once([
+                system,
+                {"role": "user", "content": (
+                    "Summarize the conversation history below into a compact but complete record. "
+                    "Include key decisions, facts, code written, commands run, and outcomes. "
+                    "Use bullet points. Be thorough but concise.\n\n" + text
+                )},
+            ])
+        except Exception:
+            return ""
+        turn = sum(1 for m in self.messages if m.get("role") == "user")
+        self.messages = [
+            system,
+            {"role": "assistant", "content": f"[Conversation compacted at turn {turn}]\n\n{summary}"},
+        ]
+        self._messages_since_compact = 0
+        return summary
+
     def _compose_execution_followup(self, user_message: str) -> str:
         context = (self.pending_execution_context or "").strip()
         if not context:
@@ -138,6 +168,16 @@ class Agent:
             has_images=bool(images),
             message_preview=user_message,
         )
+
+        compact_cfg = self.config.compact
+        if compact_cfg.auto_compact:
+            self._messages_since_compact += 1
+            if self._messages_since_compact >= compact_cfg.auto_compact_after:
+                turn = sum(1 for m in self.messages if m.get("role") == "user")
+                summary = self.compact()
+                if summary:
+                    yield compact_event(summary, turn=turn, auto=True)
+
         self._maybe_compress()
 
         inherit_execution_context = bool(self.pending_execution_context and self.router.should_inherit_execution_context(user_message))
@@ -317,6 +357,7 @@ class Agent:
 
     def clear(self):
         self._build_system_prompt()
+        self._messages_since_compact = 0
 
     def set_model(self, model: str):
         provider = self.config.agent.provider

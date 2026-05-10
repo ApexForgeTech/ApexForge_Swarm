@@ -64,3 +64,6 @@ rag:
 web:
   host: 0.0.0.0
   port: 8080
+compact:
+  auto_compact: true
+  auto_compact_after: 7

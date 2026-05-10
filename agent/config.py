@@ -90,6 +90,12 @@ class RAGConfig:
 
 
 @dataclass
+class CompactConfig:
+    auto_compact: bool = True
+    auto_compact_after: int = 7
+
+
+@dataclass
 class PluginsConfig:
     enabled: bool = True
     plugins_dir: str = "plugins"
@@ -131,6 +137,7 @@ class Config:
     autonomy: AutonomyConfig = field(default_factory=AutonomyConfig)
     web: WebConfig = field(default_factory=WebConfig)
     plugins: PluginsConfig = field(default_factory=PluginsConfig)
+    compact: CompactConfig = field(default_factory=CompactConfig)
 
     @classmethod
     def load(cls, path: Path = ROOT / "config.yaml") -> "Config":
@@ -158,6 +165,8 @@ class Config:
                 cfg.rag = RAGConfig(**data["rag"])
             if "plugins" in data:
                 cfg.plugins = PluginsConfig(**data["plugins"])
+            if "compact" in data:
+                cfg.compact = CompactConfig(**data["compact"])
 
         # env overrides
         if os.getenv("LLM_PROVIDER"):
@@ -232,6 +241,10 @@ class Config:
         if os.getenv("PLUGINS_DIR"):
             cfg.plugins.plugins_dir = os.getenv("PLUGINS_DIR")
 
+        # compact env overrides
+        cfg.compact.auto_compact = _parse_env_bool("APEXFORGE_AUTO_COMPACT", cfg.compact.auto_compact)
+        cfg.compact.auto_compact_after = _parse_env("APEXFORGE_AUTO_COMPACT_AFTER", int, cfg.compact.auto_compact_after)
+
         return cfg
 
     def save(self, path: Path = ROOT / "config.yaml"):
@@ -290,6 +303,10 @@ class Config:
             "plugins": {
                 "enabled": self.plugins.enabled,
                 "plugins_dir": self.plugins.plugins_dir,
+            },
+            "compact": {
+                "auto_compact": self.compact.auto_compact,
+                "auto_compact_after": self.compact.auto_compact_after,
             },
         }
         with open(path, "w") as f:
