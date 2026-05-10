@@ -466,6 +466,16 @@ class LlamaCppBackend(BaseLLMBackend):
             and any(marker in normalized_reason for marker in ("connection refused", "errno 111", "failed to establish a new connection"))
         )
 
+    def _is_context_overflow_error(self, method: str, path: str, status_code: int, body: str) -> bool:
+        normalized_path = "/" + path.lstrip("/")
+        normalized_body = (body or "").lower()
+        return (
+            method.upper() == "POST"
+            and normalized_path == "/v1/chat/completions"
+            and status_code == 500
+            and "context size has been exceeded" in normalized_body
+        )
+
     def _request_json(
         self,
         method: str,
@@ -498,6 +508,14 @@ class LlamaCppBackend(BaseLLMBackend):
             if body:
                 detail += f" | {re.sub(r'\s+', ' ', body)[:300]}"
             transient = self._is_transient_models_http_error(method, path, exc.code, body)
+            if self._is_context_overflow_error(method, path, exc.code, body):
+                detail = (
+                    f"{detail}\n\n"
+                    f"Hint: llama.cpp context window is too small for this request. "
+                    f"Current `num_ctx` is {self.config.ollama.num_ctx}. "
+                    f"Increase it with `OLLAMA_NUM_CTX` or `LLAMA_CPP_NUM_CTX`, then restart the process/server. "
+                    f"If the conversation is already long, start a fresh session or reduce attached context."
+                )
             log_event(
                 logger,
                 logging.INFO if transient else logging.ERROR,

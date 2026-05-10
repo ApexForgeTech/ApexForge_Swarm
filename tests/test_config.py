@@ -61,3 +61,20 @@ class ConfigLoadTests(unittest.TestCase):
             self.assertEqual(cfg.web.port, 9090)
             self.assertTrue(cfg.llama_cpp.auto_start)
             self.assertTrue(cfg.autonomy.enabled)
+
+    def test_llama_cpp_num_ctx_alias_overrides_context_window(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yaml"
+            config_path.write_text("{}", encoding="utf-8")
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "LLM_PROVIDER": "llama_cpp",
+                    "LLAMA_CPP_NUM_CTX": "32768",
+                },
+                clear=False,
+            ):
+                cfg = Config.load(config_path)
+
+            self.assertEqual(cfg.ollama.num_ctx, 32768)

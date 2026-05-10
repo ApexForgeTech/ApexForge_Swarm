@@ -186,6 +186,7 @@ LLM_PROVIDER=llama_cpp
 LLAMA_CPP_HOST=http://127.0.0.1:8081
 LLAMA_CPP_MODEL_PATH=/path/to/model.gguf
 LLAMA_CPP_AUTO_START=true
+LLAMA_CPP_NUM_CTX=32768
 LLAMA_CPP_MAX_TOKENS=2048
 LLAMA_CPP_REQUEST_TIMEOUT=600
 # Optional: CLI first shows "starting local model server..."
@@ -730,6 +731,7 @@ curl -X POST http://localhost:8080/api/chat \
 │ LLAMA_CPP_HOST               │ llama.cpp server URL         │
 │ LLAMA_CPP_MODEL_PATH         │ Absolute GGUF path           │
 │ LLAMA_CPP_HF_MODEL           │ HuggingFace model ID         │
+│ LLAMA_CPP_NUM_CTX            │ llama.cpp context window     │
 │ LLAMA_CPP_AUTO_START         │ true/false                   │
 │ LLAMA_CPP_MAX_TOKENS         │ Max output tokens (def: 2048)│
 │ LLAMA_CPP_REQUEST_TIMEOUT    │ Seconds (default: 600)       │
@@ -1053,6 +1055,21 @@ APEXFORGE_ALLOW_DESKTOP_WEB_FALLBACK=true python main.py --desktop
 ```env
 LLAMA_CPP_MAX_TOKENS=2048
 ```
+
+### Context size exceeded (llama.cpp)
+
+Increase the context window and restart:
+```env
+LLAMA_CPP_NUM_CTX=32768
+```
+
+Compatibility note:
+```env
+# Older/shared config style also works
+OLLAMA_NUM_CTX=32768
+```
+
+If the session is already very long, also consider starting a fresh session or clearing chat history.
 
 ### Model loads slowly / timeout
 

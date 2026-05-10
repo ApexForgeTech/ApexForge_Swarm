@@ -167,6 +167,9 @@ class Config:
             cfg.ollama.model = os.getenv("OLLAMA_MODEL")
         cfg.ollama.temperature = _parse_env("OLLAMA_TEMPERATURE", float, cfg.ollama.temperature)
         cfg.ollama.num_ctx = _parse_env("OLLAMA_NUM_CTX", int, cfg.ollama.num_ctx)
+        llama_cpp_num_ctx = os.getenv("LLAMA_CPP_NUM_CTX") or os.getenv("LLAMA_CPP_CTX_SIZE")
+        if llama_cpp_num_ctx is not None:
+            cfg.ollama.num_ctx = _parse_env("LLAMA_CPP_NUM_CTX", int, _parse_env("LLAMA_CPP_CTX_SIZE", int, cfg.ollama.num_ctx))
         if os.getenv("LLAMA_CPP_HOST"):
             cfg.llama_cpp.host = os.getenv("LLAMA_CPP_HOST")
         if os.getenv("LLAMA_CPP_SERVER_BINARY"):
