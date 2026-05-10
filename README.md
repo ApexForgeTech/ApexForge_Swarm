@@ -816,6 +816,11 @@ curl -X POST http://localhost:8080/api/chat \
 │ APEXFORGE_ALLOW_DESKTOP_     │ Browser fallback for desktop │
 │ WEB_FALLBACK                 │ mode                         │
 │ AUX_AUTONOMY_ENABLED         │ Enable ! shell prefix        │
+├──────────────────────────────┼──────────────────────────────┤
+│ APEXFORGE_AUTO_COMPACT       │ Auto-compact history         │
+│                              │ true/false (default: true)   │
+│ APEXFORGE_AUTO_COMPACT_AFTER │ Messages before auto-compact │
+│                              │ (default: 7)                 │
 └──────────────────────────────┴──────────────────────────────┘
 ```
 
@@ -848,7 +853,70 @@ llama_cpp:
 web:
   host: 0.0.0.0
   port: 8080
+
+compact:
+  auto_compact: true       # automatically compact after N user messages
+  auto_compact_after: 7    # N (disable auto-compact: set to a very high number or APEXFORGE_AUTO_COMPACT=false)
 ```
+
+---
+
+## Conversation Compaction
+
+ApexForge Swarm can summarize and compress conversation history to keep context lean without losing continuity.
+
+### Manual compact
+
+```
+> /compact
+```
+
+The agent summarizes all current messages into a compact history, replaces the full message list with that summary, and displays it.
+
+### Auto-compact
+
+When `APEXFORGE_AUTO_COMPACT=true` (default), the agent automatically compacts every N user messages:
+
+```
+[default@qwen2.5-3b-instruct-q4_k_m.gguf] > ...
+  ✓ Auto-compacted at turn 7 (every 7 messages)
+```
+
+### Configuration
+
+```env
+# .env
+APEXFORGE_AUTO_COMPACT=true          # enable / disable (default: true)
+APEXFORGE_AUTO_COMPACT_AFTER=7       # compact every N messages (default: 7)
+```
+
+```yaml
+# config.yaml
+compact:
+  auto_compact: true
+  auto_compact_after: 7
+```
+
+### How it works
+
+```
+Every N user messages (or on /compact):
+  1. All non-system messages are collected
+  2. LLM summarizes them: decisions, facts, code, commands, outcomes
+  3. Full history is replaced with one compact summary message
+  4. Counter resets — next cycle starts from 0
+
+Result in history:
+  [system prompt]
+  [Conversation compacted at turn 7]
+  • User asked to create /tmp/test_ai folder — done
+  • Calculator script written and executed successfully
+  • ...
+  [new messages continue here]
+```
+
+> `/clear` also resets the compact counter.
+> Auto-compact does **not** run during `/compact` — they are independent.
 
 ---
 
