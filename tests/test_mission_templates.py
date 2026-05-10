@@ -109,19 +109,19 @@ class FromTemplateTests(unittest.TestCase):
 
     def test_from_template_builds_correct_worker_count(self):
         cfg = self._config()
-        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None: _FakeAgent(name)):
+        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None, host=None: _FakeAgent(name)):
             mas = MultiAgentSystem.from_template(cfg, "code_review")
         self.assertEqual(len(mas.workers), len(TEMPLATES["code_review"]["workers"]))
 
     def test_from_template_stores_template_name(self):
         cfg = self._config()
-        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None: _FakeAgent(name)):
+        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None, host=None: _FakeAgent(name)):
             mas = MultiAgentSystem.from_template(cfg, "research")
         self.assertEqual(mas.template_name, "research")
 
     def test_from_template_stores_hint(self):
         cfg = self._config()
-        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None: _FakeAgent(name)):
+        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None, host=None: _FakeAgent(name)):
             mas = MultiAgentSystem.from_template(cfg, "data_analysis")
         self.assertTrue(mas.template_hint)
         self.assertIn("tool", mas.template_hint.lower())
@@ -133,13 +133,13 @@ class FromTemplateTests(unittest.TestCase):
 
     def test_from_template_supervisor_override(self):
         cfg = self._config()
-        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None: _FakeAgent(name)):
+        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None, host=None: _FakeAgent(name)):
             mas = MultiAgentSystem.from_template(cfg, "feature_planning", supervisor_override={"role": "My Lead"})
         self.assertEqual(mas.supervisor_role, "My Lead")
 
     def test_from_template_has_message_bus(self):
         cfg = self._config()
-        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None: _FakeAgent(name)):
+        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None, host=None: _FakeAgent(name)):
             mas = MultiAgentSystem.from_template(cfg, "repo_audit")
         self.assertIsInstance(mas.bus, MessageBus)
 

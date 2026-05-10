@@ -18,6 +18,8 @@ class ConfigLoadTests(unittest.TestCase):
                 {
                     "OLLAMA_TEMPERATURE": "not-a-number",
                     "OLLAMA_NUM_CTX": "broken",
+                    "LLAMA_CPP_NUM_CTX": "",
+                    "LLAMA_CPP_CTX_SIZE": "",
                     "WEB_PORT": "bad-port",
                     "LLAMA_CPP_AUTO_START": "not-bool",
                     "AUX_AUTONOMY_ENABLED": "invalid",
@@ -44,6 +46,8 @@ class ConfigLoadTests(unittest.TestCase):
                     "OLLAMA_MODEL": "qwen2.5:7b",
                     "OLLAMA_TEMPERATURE": "0.7",
                     "OLLAMA_NUM_CTX": "4096",
+                    "LLAMA_CPP_NUM_CTX": "",
+                    "LLAMA_CPP_CTX_SIZE": "",
                     "WEB_HOST": "127.0.0.1",
                     "WEB_PORT": "9090",
                     "LLAMA_CPP_AUTO_START": "true",
@@ -78,3 +82,23 @@ class ConfigLoadTests(unittest.TestCase):
                 cfg = Config.load(config_path)
 
             self.assertEqual(cfg.ollama.num_ctx, 32768)
+
+    def test_llama_cpp_hosts_env_populates_host_pool(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yaml"
+            config_path.write_text("{}", encoding="utf-8")
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "LLM_PROVIDER": "llama_cpp",
+                    "LLAMA_CPP_HOSTS": "http://127.0.0.1:8081, http://127.0.0.1:8082",
+                },
+                clear=False,
+            ):
+                cfg = Config.load(config_path)
+
+            self.assertEqual(
+                cfg.llama_cpp.hosts,
+                ["http://127.0.0.1:8081", "http://127.0.0.1:8082"],
+            )

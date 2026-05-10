@@ -193,6 +193,16 @@ LLAMA_CPP_REQUEST_TIMEOUT=600
 APEXFORGE_CLI_BACKEND_PREFLIGHT=true
 ```
 
+**llama.cpp Multi-Host (Real Parallel Workers):**
+```env
+LLM_PROVIDER=llama_cpp
+LLAMA_CPP_HOSTS=http://127.0.0.1:8081,http://127.0.0.1:8082
+LLAMA_CPP_MODEL_PATH=/path/to/model.gguf
+LLAMA_CPP_AUTO_START=true
+LLAMA_CPP_NUM_CTX=32768
+```
+Use this when you want ApexForge Swarm to spread supervisor/workers across multiple `llama-server` instances. If a mission requests more distinct models than available hosts, ApexForge safely normalizes the team for that run.
+
 **OpenAI / Groq / Mistral / LM Studio:**
 ```env
 LLM_PROVIDER=openai_compat
@@ -771,6 +781,7 @@ ollama:
 
 llama_cpp:
   host: http://127.0.0.1:8081
+  hosts: []                     # optional pool: ["http://127.0.0.1:8081", "http://127.0.0.1:8082"]
   model_path: ""
   auto_start: false
   max_tokens: 2048             # was 384 — now sensible default

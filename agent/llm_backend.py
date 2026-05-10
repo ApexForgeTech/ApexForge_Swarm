@@ -24,6 +24,23 @@ _BACKEND_LOCKS: Dict[str, threading.RLock] = {}
 _BACKEND_LOCKS_GUARD = threading.Lock()
 
 
+def configured_llama_cpp_hosts(config: Any) -> List[str]:
+    raw_hosts = []
+    for host in getattr(getattr(config, "llama_cpp", None), "hosts", []) or []:
+        value = str(host or "").strip()
+        if value:
+            raw_hosts.append(value)
+    fallback = str(getattr(getattr(config, "llama_cpp", None), "host", "") or "").strip()
+    if fallback:
+        raw_hosts.append(fallback)
+
+    deduped: List[str] = []
+    for host in raw_hosts:
+        if host not in deduped:
+            deduped.append(host)
+    return deduped
+
+
 def _backend_lock_for(key: str) -> threading.RLock:
     with _BACKEND_LOCKS_GUARD:
         lock = _BACKEND_LOCKS.get(key)
@@ -942,11 +959,22 @@ class LlamaCppBackend(BaseLLMBackend):
             return fallback
 
     def capabilities(self) -> BackendCapabilities:
+        host_pool = configured_llama_cpp_hosts(self.config)
+        host_count = len(host_pool)
+        multi_host = host_count > 1
         notes = [
-            "In this architecture, a single llama.cpp host is treated as a single active-model server.",
-            "Multi-agent missions are supported, but worker requests are queued per host to prevent model-switch races and HTTP 500 errors.",
-            "Mixed per-agent model missions are normalized to one shared model for safety.",
+            "Each llama.cpp host is treated as a single active-model server.",
+            "Multi-agent missions are supported, and requests are serialized per host to prevent model-switch races and HTTP 500 errors.",
         ]
+        if multi_host:
+            notes.append(
+                f"Multi-host mode is enabled with {host_count} hosts, so agents can be spread across hosts for real parallel worker execution."
+            )
+            notes.append(
+                "Mixed per-agent models are supported when the host pool is large enough to isolate distinct models; otherwise missions are normalized for safety."
+            )
+        else:
+            notes.append("Single-host mode is active, so mixed per-agent model missions are normalized to one shared model for safety.")
         if self.config.llama_cpp.auto_start:
             notes.append("Auto-start is enabled, so ApexForge Swarm can launch llama-server when the host is local and free.")
         else:
@@ -954,8 +982,8 @@ class LlamaCppBackend(BaseLLMBackend):
         return BackendCapabilities(
             provider="llama_cpp",
             multi_agent_supported=True,
-            request_parallelism="serialized",
-            mixed_model_missions="normalized_to_single_model",
+            request_parallelism="parallel" if multi_host else "serialized",
+            mixed_model_missions="supported" if multi_host else "normalized_to_single_model",
             auto_start_supported=True,
             local_model_discovery=True,
             notes=notes,

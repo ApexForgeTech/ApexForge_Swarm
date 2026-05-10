@@ -9,11 +9,15 @@ from agent.multi_agent import MultiAgentSystem
 
 
 class _FakeAgent:
-    def __init__(self, name: str):
+    def __init__(self, name: str, host: str = "", config=None):
         self.name = name
+        self.host = host
+        self.config = config
         self.messages = [{"role": "system", "content": "fake"}]
 
     def set_model(self, _model: str):
+        if self.config is not None:
+            self.config.ollama.model = _model
         return None
 
 
@@ -29,8 +33,8 @@ class MultiAgentFlowTests(unittest.TestCase):
         cfg = self._load_config()
         cfg.agent.provider = "ollama"
 
-        def fake_create_agent(self, name, role, model=None):
-            return _FakeAgent(name)
+        def fake_create_agent(self, name, role, model=None, host=None):
+            return _FakeAgent(name, host or "")
 
         def fake_collect(self, agent, prompt, stream_text, interrupt=None):
             if agent.name == "Supervisor" and "Create a concrete plan" in prompt:
@@ -83,7 +87,7 @@ class MultiAgentFlowTests(unittest.TestCase):
         cfg = self._load_config()
         cfg.agent.provider = "llama_cpp"
 
-        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None: _FakeAgent(name)):
+        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None, host=None: _FakeAgent(name, host or "")):
             mas = MultiAgentSystem(
                 cfg,
                 {"role": "Lead", "model": "supervisor.gguf"},
@@ -99,7 +103,7 @@ class MultiAgentFlowTests(unittest.TestCase):
         stop = threading.Event()
         stop.set()
 
-        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None: _FakeAgent(name)):
+        with mock.patch.object(MultiAgentSystem, "_create_agent", lambda self, name, role, model=None, host=None: _FakeAgent(name, host or "")):
             mas = MultiAgentSystem(
                 cfg,
                 {"role": "Lead"},
@@ -110,3 +114,52 @@ class MultiAgentFlowTests(unittest.TestCase):
         event_types = [event["type"] for event in events]
         self.assertIn("interrupted", event_types)
         self.assertEqual(events[-1]["type"], "done")
+
+    def test_llama_cpp_multi_host_assigns_distinct_hosts_without_normalizing_models(self):
+        cfg = self._load_config()
+        cfg.agent.provider = "llama_cpp"
+        cfg.llama_cpp.hosts = ["http://127.0.0.1:8081", "http://127.0.0.1:8082"]
+
+        with mock.patch("agent.multi_agent.build_agent", side_effect=lambda config: _FakeAgent("fake", config=config)):
+            mas = MultiAgentSystem(
+                cfg,
+                {"role": "Lead", "model": "supervisor.gguf"},
+                [{"role": "Developer", "model": "worker.gguf"}, {"role": "Tester", "model": "worker.gguf"}],
+            )
+
+        self.assertIn(mas.supervisor.config.llama_cpp.host, cfg.llama_cpp.hosts)
+        worker_hosts = {worker.name: worker.config.llama_cpp.host for worker in mas.workers}
+        self.assertEqual(worker_hosts["Worker_1"], worker_hosts["Worker_2"])
+        self.assertNotEqual(worker_hosts["Worker_1"], mas.supervisor.config.llama_cpp.host)
+        self.assertEqual(mas.worker_specs[0]["model"], "worker.gguf")
+        self.assertFalse(any("Normalized all agents" in warning for warning in mas.backend_warnings))
+
+    def test_llama_cpp_multi_host_normalizes_when_distinct_models_exceed_hosts(self):
+        cfg = self._load_config()
+        cfg.agent.provider = "llama_cpp"
+        cfg.llama_cpp.hosts = ["http://127.0.0.1:8081", "http://127.0.0.1:8082"]
+
+        with mock.patch("agent.multi_agent.build_agent", side_effect=lambda config: _FakeAgent("fake", config=config)):
+            mas = MultiAgentSystem(
+                cfg,
+                {"role": "Lead", "model": "supervisor.gguf"},
+                [{"role": "Developer", "model": "worker.gguf"}, {"role": "Tester", "model": "qa.gguf"}],
+            )
+
+        self.assertTrue(any("Normalized all agents" in warning for warning in mas.backend_warnings))
+        self.assertTrue(all(spec["model"] == "supervisor.gguf" for spec in mas.worker_specs))
+
+    def test_llama_cpp_multi_host_spreads_same_model_workers_across_spare_hosts(self):
+        cfg = self._load_config()
+        cfg.agent.provider = "llama_cpp"
+        cfg.llama_cpp.hosts = ["http://127.0.0.1:8081", "http://127.0.0.1:8082"]
+
+        with mock.patch("agent.multi_agent.build_agent", side_effect=lambda config: _FakeAgent("fake", config=config)):
+            mas = MultiAgentSystem(
+                cfg,
+                {"role": "Lead", "model": "shared.gguf"},
+                [{"role": "Developer", "model": "shared.gguf"}, {"role": "Tester", "model": "shared.gguf"}],
+            )
+
+        worker_hosts = {worker.config.llama_cpp.host for worker in mas.workers}
+        self.assertEqual(worker_hosts, set(cfg.llama_cpp.hosts))

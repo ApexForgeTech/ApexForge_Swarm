@@ -28,7 +28,19 @@ class BackendCapabilitiesTests(unittest.TestCase):
         self.assertEqual(capabilities["request_parallelism"], "serialized")
         self.assertEqual(capabilities["mixed_model_missions"], "normalized_to_single_model")
         self.assertTrue(capabilities["auto_start_supported"])
-        self.assertTrue(any("single active-model server" in note for note in capabilities["notes"]))
+        self.assertTrue(any("single-host mode" in note.lower() for note in capabilities["notes"]))
+
+    def test_llama_cpp_multi_host_capabilities_enable_parallelism(self):
+        cfg = self._load_config()
+        cfg.agent.provider = "llama_cpp"
+        cfg.llama_cpp.hosts = ["http://127.0.0.1:8081", "http://127.0.0.1:8082"]
+
+        capabilities = get_backend_capabilities(cfg).as_dict()
+
+        self.assertEqual(capabilities["provider"], "llama_cpp")
+        self.assertEqual(capabilities["request_parallelism"], "parallel")
+        self.assertEqual(capabilities["mixed_model_missions"], "supported")
+        self.assertTrue(any("multi-host mode" in note.lower() for note in capabilities["notes"]))
 
     def test_ollama_capabilities_change_when_serialization_env_is_enabled(self):
         cfg = self._load_config()

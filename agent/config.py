@@ -104,6 +104,7 @@ class WebConfig:
 @dataclass
 class LlamaCppConfig:
     host: str = "http://127.0.0.1:8081"
+    hosts: List[str] = field(default_factory=list)
     server_binary: str = "llama-server"
     model_path: str = ""
     hf_model: str = ""
@@ -172,6 +173,8 @@ class Config:
             cfg.ollama.num_ctx = _parse_env("LLAMA_CPP_NUM_CTX", int, _parse_env("LLAMA_CPP_CTX_SIZE", int, cfg.ollama.num_ctx))
         if os.getenv("LLAMA_CPP_HOST"):
             cfg.llama_cpp.host = os.getenv("LLAMA_CPP_HOST")
+        if os.getenv("LLAMA_CPP_HOSTS"):
+            cfg.llama_cpp.hosts = [part.strip() for part in os.getenv("LLAMA_CPP_HOSTS").split(",") if part.strip()]
         if os.getenv("LLAMA_CPP_SERVER_BINARY"):
             cfg.llama_cpp.server_binary = os.getenv("LLAMA_CPP_SERVER_BINARY")
         if os.getenv("LLAMA_CPP_MODEL_PATH"):
@@ -241,6 +244,7 @@ class Config:
             },
             "llama_cpp": {
                 "host": self.llama_cpp.host,
+                "hosts": self.llama_cpp.hosts,
                 "server_binary": self.llama_cpp.server_binary,
                 "model_path": self.llama_cpp.model_path,
                 "hf_model": self.llama_cpp.hf_model,

@@ -24,7 +24,7 @@ from .events import (
     tool_result_event,
     worker_status_event,
 )
-from .llm_backend import BackendCapabilities, get_backend_capabilities
+from .llm_backend import BackendCapabilities, configured_llama_cpp_hosts, get_backend_capabilities
 from .logging_utils import log_event
 from .reporting import WorkerReport, normalize_worker_report
 from .runtime import build_agent
@@ -96,13 +96,20 @@ class MultiAgentSystem:
         self.bus = MessageBus()
         self.backend_warnings: List[str] = []
         self.backend_capabilities: BackendCapabilities = get_backend_capabilities(config)
+        self._llama_cpp_hosts = configured_llama_cpp_hosts(config) if config.agent.provider == "llama_cpp" else []
         normalized_supervisor, normalized_workers = self._normalize_team_models(supervisor_data, workers_data)
         self.supervisor_role = (normalized_supervisor.get("role") or "Supervisor").strip()
         self.worker_specs = self._normalize_worker_specs(normalized_workers)
+        self.member_hosts = self._build_member_host_map(normalized_supervisor, self.worker_specs)
 
-        self.supervisor = self._create_agent("Supervisor", self.supervisor_role, normalized_supervisor.get("model"))
+        self.supervisor = self._create_agent(
+            "Supervisor",
+            self.supervisor_role,
+            normalized_supervisor.get("model"),
+            host=self.member_hosts.get("Supervisor"),
+        )
         self.workers = [
-            self._create_agent(spec["name"], spec["role"], spec.get("model"))
+            self._create_agent(spec["name"], spec["role"], spec.get("model"), host=self.member_hosts.get(spec["name"]))
             for spec in self.worker_specs
         ]
         self.worker_roles = {spec["name"]: spec["role"] for spec in self.worker_specs}
@@ -135,20 +142,33 @@ class MultiAgentSystem:
         workers = [dict(worker or {}) for worker in workers_data or []]
 
         capabilities = self.backend_capabilities
-        if capabilities.mixed_model_missions == "supported":
+        if capabilities.mixed_model_missions == "supported" and self.config.agent.provider != "llama_cpp":
             return supervisor, workers
 
-        selected = (
-            (supervisor.get("model") or "").strip()
-            or next(((worker.get("model") or "").strip() for worker in workers if (worker.get("model") or "").strip()), "")
-            or (self.config.ollama.model or "").strip()
-        )
+        selected = self._selected_model(supervisor, workers)
 
         requested_models = {
             model for model in
             [selected, (supervisor.get("model") or "").strip(), *[((worker.get("model") or "").strip()) for worker in workers]]
             if model
         }
+
+        if self._llama_cpp_multi_host_enabled():
+            if len(requested_models) > len(self._llama_cpp_hosts):
+                self.backend_warnings.append(
+                    f"llama_cpp host pool has {len(self._llama_cpp_hosts)} hosts but this mission requested {len(requested_models)} distinct models. "
+                    f"Normalized all agents to `{selected}` for safety."
+                )
+                supervisor["model"] = selected
+                for worker in workers:
+                    worker["model"] = selected
+                return supervisor, workers
+            if len([worker for worker in workers if (worker.get('role') or '').strip()]) > len(self._llama_cpp_hosts):
+                self.backend_warnings.append(
+                    f"llama_cpp host pool has {len(self._llama_cpp_hosts)} hosts for {len(workers)} workers. "
+                    "Some workers will share a host, so those requests may still queue per host."
+                )
+            return supervisor, workers
 
         if len(requested_models) > 1 and capabilities.mixed_model_missions == "normalized_to_single_model":
             self.backend_warnings.append(
@@ -168,6 +188,16 @@ class MultiAgentSystem:
         for worker in workers:
             worker["model"] = selected
         return supervisor, workers
+
+    def _selected_model(self, supervisor: Dict[str, str], workers: List[Dict[str, str]]) -> str:
+        return (
+            (supervisor.get("model") or "").strip()
+            or next(((worker.get("model") or "").strip() for worker in workers if (worker.get("model") or "").strip()), "")
+            or (self.config.ollama.model or "").strip()
+        )
+
+    def _llama_cpp_multi_host_enabled(self) -> bool:
+        return self.config.agent.provider == "llama_cpp" and len(self._llama_cpp_hosts) > 1
 
     def _normalize_worker_specs(self, workers_data: List[Dict[str, str]]) -> List[Dict[str, str]]:
         specs: List[Dict[str, str]] = []
@@ -196,9 +226,64 @@ class MultiAgentSystem:
             "- Return concrete results, evidence, and next-useful findings for the team."
         )
 
-    def _create_agent(self, name: str, role: str, model: Optional[str] = None) -> Agent:
+    def _build_member_host_map(
+        self,
+        supervisor_data: Dict[str, str],
+        worker_specs: List[Dict[str, str]],
+    ) -> Dict[str, str]:
+        if not self._llama_cpp_multi_host_enabled():
+            return {}
+
+        assignments: Dict[str, str] = {}
+        members = [
+            *[
+                {"name": spec["name"], "model": (spec.get("model") or self.config.ollama.model or "").strip(), "kind": "worker"}
+                for spec in worker_specs
+            ],
+            {"name": "Supervisor", "model": (supervisor_data.get("model") or self.config.ollama.model or "").strip(), "kind": "supervisor"},
+        ]
+        buckets: Dict[str, List[Dict[str, str]]] = {}
+        for member in members:
+            buckets.setdefault(member["model"], []).append(member)
+
+        unassigned_hosts = list(self._llama_cpp_hosts)
+        host_loads = {host: 0 for host in self._llama_cpp_hosts}
+        model_hosts: Dict[str, List[str]] = {}
+
+        for model, bucket_members in sorted(
+            buckets.items(),
+            key=lambda item: (
+                -sum(1 for member in item[1] if member["kind"] == "worker"),
+                -len(item[1]),
+            ),
+        ):
+            if not unassigned_hosts:
+                break
+            host = unassigned_hosts.pop(0)
+            model_hosts.setdefault(model, []).append(host)
+            member = bucket_members.pop(0)
+            assignments[member["name"]] = host
+            host_loads[host] += 1
+
+        for model, bucket_members in buckets.items():
+            hosts_for_model = model_hosts.setdefault(model, [])
+            for member in bucket_members:
+                if member["kind"] == "worker" and unassigned_hosts:
+                    host = unassigned_hosts.pop(0)
+                    hosts_for_model.append(host)
+                else:
+                    host = min(hosts_for_model, key=lambda item: host_loads[item])
+                assignments[member["name"]] = host
+                host_loads[host] += 1
+
+        return assignments
+
+    def _create_agent(self, name: str, role: str, model: Optional[str] = None, host: Optional[str] = None) -> Agent:
         agent_config = copy.deepcopy(self.config)
         agent_config.agent.system_prompt = self._agent_system_prompt(name, role)
+        if host and agent_config.agent.provider == "llama_cpp":
+            agent_config.llama_cpp.host = host
+            agent_config.llama_cpp.hosts = [host]
         agent = build_agent(agent_config)
         agent.name = name
         if model:
