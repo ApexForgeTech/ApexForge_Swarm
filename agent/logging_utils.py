@@ -47,23 +47,44 @@ class ApexSwarmFormatter(logging.Formatter):
         return super().format(record)
 
 
-def configure_logging() -> None:
-    level_name = (os.getenv("APEXFORGE_LOG_LEVEL") or "INFO").upper()
+def configure_logging(mode: str = "cli") -> None:
+    """
+    mode="cli"  → WARNING+ to stderr only (keeps the terminal clean)
+    mode="web"  → INFO+ to stderr (server log)
+    mode="file" → INFO+ to apexforge.log
+    env var APEXFORGE_LOG_LEVEL overrides the level.
+    env var APEXFORGE_LOG_FORMAT sets "text" or "json".
+    """
     log_format = (os.getenv("APEXFORGE_LOG_FORMAT") or "text").strip().lower()
-    level = getattr(logging, level_name, logging.INFO)
+
+    if os.getenv("APEXFORGE_LOG_LEVEL"):
+        level = getattr(logging, os.getenv("APEXFORGE_LOG_LEVEL").upper(), logging.WARNING)
+    elif mode == "cli":
+        level = logging.WARNING
+    else:
+        level = logging.INFO
+
     root = logging.getLogger()
     root.setLevel(level)
 
     formatter = ApexSwarmFormatter(json_mode=(log_format == "json"))
+
+    if mode == "file":
+        handler = logging.FileHandler("apexforge.log", encoding="utf-8")
+    else:
+        import sys
+        handler = logging.StreamHandler(sys.stderr)
+
+    handler.setFormatter(formatter)
+    handler.setLevel(level)
+
     if not root.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(formatter)
         root.addHandler(handler)
         return
 
-    for handler in root.handlers:
-        handler.setFormatter(formatter)
-        handler.setLevel(level)
+    for h in root.handlers:
+        h.setFormatter(formatter)
+        h.setLevel(level)
 
 
 def log_event(logger: logging.Logger, level: int, event: str, **fields: Any) -> None:

@@ -32,7 +32,9 @@ def main():
     import argparse
     from agent.logging_utils import configure_logging
 
-    configure_logging()
+    # Determine log mode before parsing so logs are clean from the start
+    _mode = "web" if "--web" in sys.argv or "--desktop" in sys.argv else "cli"
+    configure_logging(mode=_mode)
     parser = argparse.ArgumentParser(
         description="ApexForge Swarm",
         formatter_class=argparse.RawDescriptionHelpFormatter,
