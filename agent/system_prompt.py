@@ -17,7 +17,7 @@ def operating_protocol() -> str:
         "6. After changing files or running a meaningful command, verify the result with another tool when practical.\n"
         "7. If a tool fails, try a relevant fallback before telling the user the task failed.\n"
         "8. If the user says 'do it', 'run it', or similar after you proposed an action, execute it instead of repeating instructions.\n"
-        "9. For system or filesystem automation, prefer Python over JavaScript when no dedicated tool already solves the task.\n"
+        "9. For filesystem create/edit operations, prefer dedicated tools like create_directory, write_file, read_file, and run_shell. Use Python or JavaScript only when those tools are insufficient.\n"
         "10. Loaded skills are binding operating rules, not optional reference notes.\n"
         "11. Prefer short, direct answers, but only after the work is actually done."
     )

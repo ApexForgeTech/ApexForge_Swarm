@@ -7,6 +7,7 @@ Usage:
   python main.py -p "your question"      # direct prompt, no interactive mode
 """
 import copy
+import os
 import sys
 import signal
 import threading
@@ -14,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -391,14 +393,19 @@ def run_cli(
         signal.signal(signal.SIGINT, sigint_stream)
         interrupt_evt.clear()
 
-        session.save_user(user_input, agent.messages)
         console.print()
         response_text = ""
+        preflight_error = None
 
         with Live(
             Spinner("dots2", text=f"  [dim]{config.ollama.model}[/dim] thinking…"),
             console=console, refresh_per_second=12,
         ) as live:
+            preflight_error = _maybe_prepare_backend_for_cli(agent, config, live)
+            if preflight_error:
+                live.update(Text(""))
+            else:
+                session.save_user(user_input, agent.messages)
             for event in agent.chat(user_input, interrupt=interrupt_evt):
                 t = event["type"]
 
@@ -453,6 +460,10 @@ def run_cli(
                     if response_text:
                         live.update(Markdown(response_text))
 
+        if preflight_error:
+            console.print(f"\n[yellow]Backend not ready:[/yellow] {preflight_error}")
+            continue
+
         if response_text:
             session.save_agent(response_text, agent.messages)
             msg_count += 1
@@ -478,6 +489,47 @@ def _normalize_cli_command_input(user_input: str) -> str:
     if lowered.startswith("model "):
         return "/model " + stripped[6:].strip()
     return stripped
+
+
+def _env_truthy(name: str) -> bool:
+    value = (os.getenv(name) or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _llama_cpp_target(config: Config) -> str:
+    parsed = urlparse(config.llama_cpp.host or "http://127.0.0.1:8081")
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 8081
+    return f"{host}:{port}"
+
+
+def _cli_backend_preflight_enabled(config: Config) -> bool:
+    return config.agent.provider == "llama_cpp" and _env_truthy("APEXFORGE_CLI_BACKEND_PREFLIGHT")
+
+
+def _maybe_prepare_backend_for_cli(agent: Agent, config: Config, live: Live) -> Optional[str]:
+    if not _cli_backend_preflight_enabled(config):
+        return None
+
+    backend = getattr(agent, "llm", None)
+    ensure_ready = getattr(backend, "ensure_ready", None)
+    if not callable(ensure_ready):
+        return None
+
+    live.update(
+        Spinner(
+            "dots2",
+            text=(
+                f"  [dim]{config.ollama.model}[/dim] "
+                f"starting local model server on [cyan]{_llama_cpp_target(config)}[/cyan]…"
+            ),
+        )
+    )
+    try:
+        ensure_ready()
+        return None
+    except Exception as exc:
+        return str(exc)
 
 
 # ── Slash command handlers ─────────────────────────────────────────────────
@@ -684,6 +736,9 @@ def _print_status(agent, config, profile, session, creds):
         ("Skills", f"[yellow]{len(agent.memory.list_skills())}[/yellow]  (global:{len(agent.memory.list_global_skills())} profile:{len(agent.memory.list_profile_skills())})"),
         ("Memory", f"[yellow]{len(agent.memory.list_memories())}[/yellow]  (global:{len(agent.memory.list_global_memories())} profile:{len(agent.memory.list_profile_memories())})"),
     ]
+    if config.agent.provider == "llama_cpp":
+        rows.insert(4, ("Backend URL", f"[cyan]{config.llama_cpp.host}[/cyan]"))
+        rows.insert(5, ("CLI Preflight", "enabled" if _cli_backend_preflight_enabled(config) else "disabled"))
     for k, v in rows:
         t.add_row(k, v)
     console.print(Panel(t, title="[bold]Status[/bold]", border_style="dim", expand=False))

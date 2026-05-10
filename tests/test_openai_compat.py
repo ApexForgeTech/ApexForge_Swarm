@@ -104,6 +104,45 @@ class BackendFactoryTests(unittest.TestCase):
         self.assertIsInstance(backend, OllamaBackend)
 
 
+class LlamaCppBackendTransientReadinessTests(unittest.TestCase):
+    def _backend(self) -> LlamaCppBackend:
+        cfg = Config()
+        cfg.agent.provider = "llama_cpp"
+        return LlamaCppBackend(cfg)
+
+    def test_loading_model_503_is_treated_as_transient_models_wait(self):
+        backend = self._backend()
+        self.assertTrue(
+            backend._is_transient_models_http_error(
+                "GET",
+                "/v1/models",
+                503,
+                '{"error":{"message":"Loading model","type":"unavailable_error","code":503}}',
+            )
+        )
+
+    def test_connection_refused_on_models_ping_is_treated_as_transient(self):
+        backend = self._backend()
+        self.assertTrue(
+            backend._is_transient_models_url_error(
+                "GET",
+                "/v1/models",
+                "[Errno 111] Connection refused",
+            )
+        )
+
+    def test_non_models_http_error_is_not_treated_as_transient(self):
+        backend = self._backend()
+        self.assertFalse(
+            backend._is_transient_models_http_error(
+                "POST",
+                "/v1/chat/completions",
+                503,
+                '{"error":{"message":"Loading model"}}',
+            )
+        )
+
+
 class OpenAICompatBackendCapabilitiesTests(unittest.TestCase):
     def _backend(self, base_url: str = "") -> OpenAICompatBackend:
         cfg = Config()

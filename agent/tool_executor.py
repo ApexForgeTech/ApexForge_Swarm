@@ -26,6 +26,7 @@ class ToolExecutor:
 
     def execute_with_fallback(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         primary_result = self.call_tool(name, args)
+        primary_result = self._augment_error_result(name, primary_result)
         attempts = [{"name": name, "args": args, "result": primary_result, "primary": True}]
         if not self.is_tool_error(primary_result):
             return {"final_name": name, "final_result": primary_result, "attempts": attempts}
@@ -60,11 +61,40 @@ class ToolExecutor:
             return True
         if text.startswith(("tool error", "http error", "url error", "search error")):
             return True
+        if "[exit code:" in text:
+            return True
         if "not allowed in autoshell" in text:
             return True
         if "[stderr]\ntraceback" in text:
             return True
+        if "[stderr]" in text and any(
+            marker in text
+            for marker in (
+                "syntaxerror",
+                "nameerror",
+                "typeerror",
+                "valueerror",
+                "filenotfounderror",
+                "modulenotfounderror",
+                "permissionerror",
+                "command not found",
+                "is not recognized as an internal or external command",
+                "can't open file",
+            )
+        ):
+            return True
         return False
+
+    def _augment_error_result(self, name: str, result: str) -> str:
+        text = (result or "").lower()
+        if name == "run_python" and "syntaxerror" in text:
+            return (
+                f"{result}\n\n"
+                "Hint: The generated Python is syntactically invalid. "
+                "If the goal is to create or edit files, prefer `create_directory` and `write_file` "
+                "instead of nesting source code inside Python string literals."
+            )
+        return result
 
     def build_fallbacks(self, name: str, args: Dict[str, Any]) -> List[Dict[str, Any]]:
         fallbacks: List[Dict[str, Any]] = []

@@ -447,6 +447,25 @@ class LlamaCppBackend(BaseLLMBackend):
                 continue
         time.sleep(1.0)
 
+    def _is_transient_models_http_error(self, method: str, path: str, status_code: int, body: str) -> bool:
+        normalized_path = "/" + path.lstrip("/")
+        normalized_body = (body or "").lower()
+        return (
+            method.upper() == "GET"
+            and normalized_path == "/v1/models"
+            and status_code == 503
+            and "loading model" in normalized_body
+        )
+
+    def _is_transient_models_url_error(self, method: str, path: str, reason: str) -> bool:
+        normalized_path = "/" + path.lstrip("/")
+        normalized_reason = (reason or "").lower()
+        return (
+            method.upper() == "GET"
+            and normalized_path == "/v1/models"
+            and any(marker in normalized_reason for marker in ("connection refused", "errno 111", "failed to establish a new connection"))
+        )
+
     def _request_json(
         self,
         method: str,
@@ -478,10 +497,11 @@ class LlamaCppBackend(BaseLLMBackend):
             detail = f"HTTP {exc.code}: {exc.reason}"
             if body:
                 detail += f" | {re.sub(r'\s+', ' ', body)[:300]}"
+            transient = self._is_transient_models_http_error(method, path, exc.code, body)
             log_event(
                 logger,
-                logging.ERROR,
-                "backend_http_error",
+                logging.INFO if transient else logging.ERROR,
+                "backend_http_waiting" if transient else "backend_http_error",
                 provider="llama_cpp",
                 method=method.upper(),
                 path=path,
@@ -497,10 +517,11 @@ class LlamaCppBackend(BaseLLMBackend):
             ) from exc
         except URLError as exc:
             reason = str(exc.reason)
+            transient = self._is_transient_models_url_error(method, path, reason)
             log_event(
                 logger,
-                logging.ERROR,
-                "backend_url_error",
+                logging.INFO if transient else logging.ERROR,
+                "backend_url_waiting" if transient else "backend_url_error",
                 provider="llama_cpp",
                 method=method.upper(),
                 path=path,

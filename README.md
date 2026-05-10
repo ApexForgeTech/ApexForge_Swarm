@@ -146,6 +146,8 @@ LLAMA_CPP_MODEL_PATH=/path/to/model.gguf
 LLAMA_CPP_AUTO_START=true
 LLAMA_CPP_MAX_TOKENS=2048
 LLAMA_CPP_REQUEST_TIMEOUT=600
+# Optional: CLI first shows "starting local model server..."
+APEXFORGE_CLI_BACKEND_PREFLIGHT=true
 ```
 
 **OpenAI / Groq / Mistral / LM Studio:**
@@ -657,6 +659,9 @@ llama_cpp:
   request_timeout: 600
   jinja: true
 
+# Portu host içində dəyişə bilərsən:
+# host: http://127.0.0.1:9091
+
 web:
   host: 0.0.0.0
   port: 8080
@@ -904,6 +909,9 @@ llama-server -m /path/to/model.gguf --host 127.0.0.1 --port 8081 -c 16384
 
 # Və ya auto-start aktiv et:
 LLAMA_CPP_AUTO_START=true python main.py
+
+# Başqa port istifadə etmək üçün:
+LLAMA_CPP_HOST=http://127.0.0.1:9091 LLAMA_CPP_AUTO_START=true python main.py
 ```
 
 ### Workers hit HTTP 500 (multi-agent)

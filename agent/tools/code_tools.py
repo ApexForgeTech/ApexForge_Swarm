@@ -8,7 +8,8 @@ class PythonTool(BaseTool):
     name = "run_python"
     description = (
         "Execute Python code and return the output. "
-        "Use for calculations, data processing, file parsing, automation scripts, and system/file automation."
+        "Use for calculations, data processing, file parsing, and automation scripts. "
+        "Prefer dedicated filesystem tools like write_file and create_directory when creating or editing files."
     )
     parameters = {
         "type": "object",
@@ -38,7 +39,7 @@ class PythonTool(BaseTool):
                 parts.append(out)
             if err:
                 parts.append(f"[stderr]\n{err}")
-            if result.returncode != 0 and not err:
+            if result.returncode != 0:
                 parts.append(f"[exit code: {result.returncode}]")
             return "\n".join(parts) if parts else "(no output)"
         except subprocess.TimeoutExpired:
@@ -51,7 +52,8 @@ class JavaScriptTool(BaseTool):
     name = "run_javascript"
     description = (
         "Execute JavaScript code with Node.js and return the output. "
-        "Use for JavaScript logic, JSON/text transformation, Node ecosystem tasks, or as an alternative runtime."
+        "Use for JavaScript logic, JSON/text transformation, Node ecosystem tasks, or as an alternative runtime. "
+        "Prefer dedicated filesystem tools like write_file and create_directory when creating or editing files."
     )
     parameters = {
         "type": "object",
@@ -84,7 +86,7 @@ class JavaScriptTool(BaseTool):
                 parts.append(out)
             if err:
                 parts.append(f"[stderr]\n{err}")
-            if result.returncode != 0 and not err:
+            if result.returncode != 0:
                 parts.append(f"[exit code: {result.returncode}]")
             return "\n".join(parts) if parts else "(no output)"
         except subprocess.TimeoutExpired:
