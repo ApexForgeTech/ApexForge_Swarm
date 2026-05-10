@@ -17,7 +17,10 @@ class _FakeAgent:
 
 
 class _FakeMAS:
+    create_count = 0
+
     def __init__(self, _config, supervisor_data, workers_data):
+        type(self).create_count += 1
         self.supervisor_data = supervisor_data
         self.workers_data = workers_data
 
@@ -60,16 +63,15 @@ class DesktopBridgeTests(unittest.TestCase):
             "agent.web.desktop.MultiAgentSystem", _FakeMAS
         ):
             app = DesktopApp(cfg)
-
-        models = app.get_models()
-        self.assertEqual(models, ["alpha.gguf", "beta.gguf", "current.gguf"])
-        self.assertEqual(app.get_backend_capabilities()["provider"], "llama_cpp")
-        diagnostics = app.get_runtime_diagnostics()
-        self.assertEqual(diagnostics["provider"], cfg.agent.provider)
-        self.assertEqual(diagnostics["model"], "current.gguf")
-        self.assertIn("backend_capabilities", diagnostics)
-        self.assertIn("desktop_mode", diagnostics)
-        self.assertIn("desktop_hint", diagnostics)
+            models = app.get_models()
+            self.assertEqual(models, ["alpha.gguf", "beta.gguf", "current.gguf"])
+            self.assertEqual(app.get_backend_capabilities()["provider"], "llama_cpp")
+            diagnostics = app.get_runtime_diagnostics()
+            self.assertEqual(diagnostics["provider"], cfg.agent.provider)
+            self.assertEqual(diagnostics["model"], "current.gguf")
+            self.assertIn("backend_capabilities", diagnostics)
+            self.assertIn("desktop_mode", diagnostics)
+            self.assertIn("desktop_hint", diagnostics)
 
     def test_update_roles_blocks_changes_while_busy(self):
         cfg = self._load_config()
@@ -144,3 +146,17 @@ class DesktopBridgeTests(unittest.TestCase):
         self.assertEqual(mission["status"], "completed")
         self.assertEqual(mission["result"], "Mission finished.")
         self.assertGreater(len(mission["events"]), 0)
+
+    def test_same_team_signature_reuses_multi_agent_instance(self):
+        cfg = self._load_config()
+        _FakeMAS.create_count = 0
+
+        with mock.patch("agent.web.desktop.build_agent", return_value=_FakeAgent()), mock.patch(
+            "agent.web.desktop.MultiAgentSystem", _FakeMAS
+        ), mock.patch("agent.web.desktop.threading.Thread", _ImmediateThread):
+            app = DesktopApp(cfg)
+            app.window = _FakeWindow()
+            app.send_message("Run mission", {"role": "Lead"}, [{"role": "Dev"}])
+            app.send_message("Run mission again", {"role": "Lead"}, [{"role": "Dev"}])
+
+        self.assertEqual(_FakeMAS.create_count, 1)

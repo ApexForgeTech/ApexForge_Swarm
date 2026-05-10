@@ -31,19 +31,48 @@ logger.addHandler(logging.NullHandler())
 class DesktopApp:
     def __init__(self, config: Config):
         self.config = config
-        self.agent = build_agent(config)
-        self.mas = self._create_multi_agent(
-            {"role": "Project Manager"},
-            [{"role": "Developer"}, {"role": "Tester"}],
-        )
+        self.agent = None
+        self.mas = None
+        self._mas_signature = None
         self.window = None
         self._busy_lock = threading.Lock()
         self._interrupt_event = threading.Event()
         db_path = Path(config.agent.memory_dir).parent / "sessions.db"
         self._store = SessionStore(db_path)
 
+    def _ensure_agent(self):
+        if self.agent is None:
+            self.agent = build_agent(self.config)
+        return self.agent
+
     def _create_multi_agent(self, supervisor_data, workers_data):
         return MultiAgentSystem(self.config, supervisor_data, workers_data)
+
+    def _team_signature(self, supervisor_data, workers_data, template_name=""):
+        normalized = {
+            "template": template_name or "",
+            "supervisor": supervisor_data or {"role": "Supervisor"},
+            "workers": workers_data or [],
+        }
+        return json.dumps(normalized, sort_keys=True)
+
+    def _ensure_multi_agent(self, supervisor_data=None, workers_data=None, template_name=None):
+        sup = supervisor_data or {"role": "Project Manager"}
+        workers = workers_data or [{"role": "Developer"}, {"role": "Tester"}]
+        signature = self._team_signature(sup, workers, template_name or "")
+        if self.mas is not None and self._mas_signature == signature:
+            return self.mas
+        if template_name:
+            self.mas = MultiAgentSystem.from_template(
+                self.config,
+                template_name,
+                supervisor_override=supervisor_data,
+                workers_override=workers_data,
+            )
+        else:
+            self.mas = self._create_multi_agent(sup, workers)
+        self._mas_signature = signature
+        return self.mas
 
     def _emit(self, event):
         if not self.window:
@@ -106,17 +135,13 @@ class DesktopApp:
                     workers_data=workers_data or [],
                     template_name=template_name or "",
                 )
-                if template_name:
-                    self.mas = MultiAgentSystem.from_template(
-                        self.config,
-                        template_name,
-                        supervisor_override=supervisor_data,
-                        workers_override=workers_data,
-                    )
-                elif supervisor_data is not None or workers_data is not None:
-                    self.mas = self._create_multi_agent(supervisor_data or {"role": "Supervisor"}, workers_data or [])
+                mas = self._ensure_multi_agent(
+                    supervisor_data=supervisor_data or {"role": "Supervisor"},
+                    workers_data=workers_data or [],
+                    template_name=template_name or "",
+                )
 
-                for event in self.mas.chat(message, interrupt=self._interrupt_event):
+                for event in mas.chat(message, interrupt=self._interrupt_event):
                     self._emit(event)
                     self._store.append_mission_event(mission_id, event)
                     if event.get("type") == "final":
@@ -140,7 +165,7 @@ class DesktopApp:
             log_event(logger, logging.WARNING, "desktop_roles_update_rejected_busy")
             return {"status": "error", "message": "Mission is running. Wait for completion before changing the team."}
         try:
-            self.mas = self._create_multi_agent(supervisor_data, workers_data)
+            self._ensure_multi_agent(supervisor_data, workers_data)
             log_event(
                 logger,
                 logging.INFO,
@@ -163,7 +188,7 @@ class DesktopApp:
     def get_models(self):
         """Return list of available models for the UI to pick from."""
         try:
-            models = self.agent.available_models()
+            models = self._ensure_agent().available_models()
         except Exception:
             models = []
 
@@ -175,7 +200,7 @@ class DesktopApp:
         return merged
 
     def get_backend_capabilities(self):
-        return self.agent.backend_capabilities()
+        return self._ensure_agent().backend_capabilities()
 
     def get_templates(self):
         """Return all mission templates for the UI template picker."""
@@ -190,7 +215,7 @@ class DesktopApp:
 
     def get_plugins(self):
         """Return metadata for all loaded plugin tools."""
-        result = getattr(self.agent, "plugin_load_result", None)
+        result = getattr(self._ensure_agent(), "plugin_load_result", None)
         if result is None:
             return {"loaded": [], "errors": []}
         return {
@@ -220,7 +245,7 @@ class DesktopApp:
             "desktop_fallback_allowed": desktop_fallback_allowed,
             "desktop_mode": desktop_mode,
             "desktop_hint": desktop_hint,
-            "backend_capabilities": self.agent.backend_capabilities(),
+            "backend_capabilities": self._ensure_agent().backend_capabilities(),
         }
 
 
