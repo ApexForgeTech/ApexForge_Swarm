@@ -36,6 +36,48 @@
 
 ---
 
+## What's New
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         RECENT PLATFORM UPGRADES                        │
+├──────────────────────────────┬───────────────────────────────────────────┤
+│ CLI Reliability              │ Execution follow-ups now carry context   │
+│                              │ Short prompts like "do it" / "yap" keep  │
+│                              │ the original real-machine task alive      │
+├──────────────────────────────┼───────────────────────────────────────────┤
+│ Tool Honesty                 │ File-creation claims are no longer        │
+│                              │ accepted without actual tool evidence     │
+├──────────────────────────────┼───────────────────────────────────────────┤
+│ llama.cpp UX                 │ Startup noise in CLI is softened          │
+│                              │ Optional preflight shows server startup   │
+├──────────────────────────────┼───────────────────────────────────────────┤
+│ Desktop War Room             │ Cleaner layout, smaller board density,    │
+│                              │ sticky controls, runtime diagnostics pane │
+├──────────────────────────────┼───────────────────────────────────────────┤
+│ API Serve Mode               │ New `--serve` mode for API-first local    │
+│                              │ service usage, plus `/api/chat` endpoint  │
+└──────────────────────────────┴───────────────────────────────────────────┘
+```
+
+### At A Glance
+
+```text
+CLI request
+   │
+   ├─▶ Tool-required task?
+   │       │
+   │       ├─ yes  → enforce tool usage → verify result
+   │       └─ no   → normal chat response
+   │
+   └─▶ llama.cpp startup?
+           │
+           ├─ optional preflight → "starting local model server..."
+           └─ then normal generation / tool loop
+```
+
+---
+
 ## What Makes This Different From Ollama
 
 ```
@@ -121,13 +163,13 @@ cd ApexForge_Swarm
 chmod +x setup.sh && ./setup.sh
 source .venv/bin/activate
 cp .env.example .env
-# .env-ni redaktə et (backend seç)
+# Edit .env and choose a backend
 python main.py
 ```
 
-### Backend Seçimi
+### Backend Selection
 
-**Ollama (Ən Asan):**
+**Ollama (Easiest):**
 ```bash
 ollama pull qwen2.5:7b
 ```
@@ -138,7 +180,7 @@ OLLAMA_MODEL=qwen2.5:7b
 OLLAMA_NUM_CTX=16384
 ```
 
-**llama.cpp (Ən Güclü — Local GGUF):**
+**llama.cpp (Most Powerful Local GGUF Path):**
 ```env
 LLM_PROVIDER=llama_cpp
 LLAMA_CPP_HOST=http://127.0.0.1:8081
@@ -166,6 +208,15 @@ OPENAI_COMPAT_MODEL=gpt-4o-mini
 # OPENAI_COMPAT_API_KEY=lm-studio
 ```
 
+### Recommended Start Paths
+
+```text
+Want the simplest local setup?        → Ollama
+Want a dedicated local GGUF server?   → llama.cpp
+Want cloud or OpenAI-compatible APIs? → openai_compat
+Want a local service endpoint?        → python main.py --serve
+```
+
 ---
 
 ## Backends
@@ -190,7 +241,7 @@ OPENAI_COMPAT_MODEL=gpt-4o-mini
 
 ### Backend Auto-Detection
 
-ApexForge Swarm yüklənəndə mövcud backendləri yoxlayır:
+ApexForge Swarm checks available backends at startup:
 
 ```
 [startup] Checking backends...
@@ -230,7 +281,7 @@ python main.py \
 ```bash
 python main.py --multi-agent -p "review this codebase and suggest improvements"
 
-# Mission template ilə:
+# With a mission template:
 python main.py --multi-agent --template code_review -p "review agent/core.py"
 ```
 
@@ -240,10 +291,26 @@ python main.py --web
 # → http://127.0.0.1:8080
 ```
 
+### API Serve
+```bash
+python main.py --serve
+# → API root on http://127.0.0.1:8080
+# → OpenAPI docs on http://127.0.0.1:8080/docs
+```
+
+### CLI Preflight For llama.cpp
+```bash
+APEXFORGE_CLI_BACKEND_PREFLIGHT=true \
+LLAMA_CPP_AUTO_START=true \
+python main.py
+```
+
+This keeps the current CLI flow intact while showing a friendlier startup phase before the first generation.
+
 ### Desktop War Room
 ```bash
 python main.py --desktop
-# Fallback (pywebview yoxdursa):
+# Fallback if `pywebview` is unavailable:
 APEXFORGE_ALLOW_DESKTOP_WEB_FALLBACK=true python main.py --desktop
 ```
 
@@ -251,7 +318,7 @@ APEXFORGE_ALLOW_DESKTOP_WEB_FALLBACK=true python main.py --desktop
 
 ## Multi-Agent System
 
-### Necə İşləyir
+### How It Works
 
 ```
 User Request
@@ -286,7 +353,7 @@ Final Answer (max 3 rounds)
 ### Mission Templates
 
 ```bash
-# Kod Review
+# Code Review
 python main.py --multi-agent --template code_review \
   -p "review the authentication module"
 
@@ -390,13 +457,13 @@ ollama pull nomic-embed-text   # local embedding model
 ### Usage
 
 ```bash
-# Sənəd əlavə et
+# Ingest a document
 python main.py -p "ingest /path/to/report.pdf into the knowledge base"
 
-# Sorğu ver
+# Query the knowledge base
 python main.py -p "search the knowledge base for authentication best practices"
 
-# Böyük codebase analizi
+# Large codebase analysis
 python main.py -p "ingest the entire src/ directory, then find all database queries"
 ```
 
@@ -438,10 +505,10 @@ Answer
 ```
 
 ```bash
-# Agent bu session-u xatırlayacaq
+# The agent will remember this for later sessions
 > remember that the database host is db.internal:5432
 
-# Sonrakı sessiyalarda da işləyir
+# Future sessions can recall it
 > what's the database host?
 → db.internal:5432
 ```
@@ -452,10 +519,10 @@ Skills are persistent behavioral rules injected into every prompt:
 
 ```
 skills/
-├── coding.md          # kodu necə yaz
-├── git_workflow.md    # git qaydaları
-├── file_editing.md    # fayl redaktə prinsipləri
-└── model_selection.md # hansı model nə vaxt
+├── coding.md          # coding standards
+├── git_workflow.md    # git rules
+├── file_editing.md    # file editing guidance
+└── model_selection.md # which model to use when
 ```
 
 ```yaml
@@ -478,6 +545,17 @@ mandatory:
 ## Desktop War Room
 
 The visual command center for multi-agent missions.
+
+### Current UX Direction
+
+```text
+Desktop mode is now optimized for:
+1. Fast setup at the top
+2. Mission board on the left
+3. Transcript and live output on the right
+4. Sticky mission composer at the bottom
+5. Runtime diagnostics without breaking the flow
+```
 
 ```
 ╔═══════════════════════════════════════════════════════════════╗
@@ -525,11 +603,28 @@ APEXFORGE_ALLOW_DESKTOP_WEB_FALLBACK=true python main.py --desktop
 ## Web API
 
 The web server exposes a full REST API + WebSocket streaming.
+If you want an API-first service without the web UI root, start it with `python main.py --serve`.
+
+### UI Mode vs Serve Mode
+
+```text
+python main.py --web
+  ├─ serves Web UI
+  ├─ serves REST API
+  └─ serves WebSocket streaming
+
+python main.py --serve
+  ├─ serves API metadata on `/`
+  ├─ serves REST API
+  ├─ serves WebSocket streaming
+  └─ keeps the same backend/runtime behavior
+```
 
 ### Endpoints
 
 ```
-GET  /                    → Web UI (index.html)
+GET  /                    → Web UI (with `--web`) or API metadata (with `--serve`)
+POST /api/chat            → single prompt response
 GET  /api/models          → list available models
 GET  /api/config          → current configuration
 POST /api/config          → update configuration
@@ -593,6 +688,25 @@ curl -X POST http://localhost:8080/api/batch \
   }'
 ```
 
+### Single Chat API
+
+```bash
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Write a short Python hello world script"
+  }'
+```
+
+```bash
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "demo-session",
+    "message": "Remember that our staging host is staging.internal"
+  }'
+```
+
 ---
 
 ## Configuration Guide
@@ -628,6 +742,8 @@ curl -X POST http://localhost:8080/api/batch \
 │ WEB_HOST                     │ Bind host (default: 0.0.0.0) │
 │ WEB_PORT                     │ Port (default: 8080)         │
 │ APEXFORGE_API_KEY            │ Web API auth key (optional)  │
+│ APEXFORGE_CLI_BACKEND_       │ Optional CLI llama.cpp       │
+│ PREFLIGHT                    │ startup preflight indicator  │
 ├──────────────────────────────┼──────────────────────────────┤
 │ APEXFORGE_SERIALIZE_LLM_     │ Force request serialization  │
 │ REQUESTS                     │ (safer for fragile backends) │
@@ -659,7 +775,7 @@ llama_cpp:
   request_timeout: 600
   jinja: true
 
-# Portu host içində dəyişə bilərsən:
+# You can change the port directly inside the host value:
 # host: http://127.0.0.1:9091
 
 web:
@@ -830,10 +946,10 @@ python main.py --multi-agent --template document_processing \
 ### Codebase RAG + Query
 
 ```bash
-# Codebase-i bilgi bazasına əlavə et
+# Ingest the codebase into the knowledge base
 python main.py -p "ingest all Python files in this project into the knowledge base"
 
-# Böyük codebase üzərindən sorğu ver
+# Query it semantically later
 python main.py -p "search the knowledge base: where is authentication handled?"
 ```
 
@@ -904,19 +1020,19 @@ Full plan: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 ### llama.cpp server unreachable
 
 ```bash
-# Server-i əl ilə başlat
+# Start the server manually
 llama-server -m /path/to/model.gguf --host 127.0.0.1 --port 8081 -c 16384
 
-# Və ya auto-start aktiv et:
+# Or enable auto-start:
 LLAMA_CPP_AUTO_START=true python main.py
 
-# Başqa port istifadə etmək üçün:
+# Use a different port:
 LLAMA_CPP_HOST=http://127.0.0.1:9091 LLAMA_CPP_AUTO_START=true python main.py
 ```
 
 ### Workers hit HTTP 500 (multi-agent)
 
-Request serialization aktiv et:
+Enable request serialization:
 ```bash
 APEXFORGE_SERIALIZE_LLM_REQUESTS=true python main.py --desktop
 ```
@@ -924,10 +1040,10 @@ APEXFORGE_SERIALIZE_LLM_REQUESTS=true python main.py --desktop
 ### Desktop opens browser instead of native window
 
 ```bash
-# Dependencies yüklə:
+# Install desktop dependencies:
 pip install pywebview PyQt6 PyQt6-WebEngine
 
-# Və ya browser fallback-i icazə ver:
+# Or explicitly allow browser fallback:
 APEXFORGE_ALLOW_DESKTOP_WEB_FALLBACK=true python main.py --desktop
 ```
 
@@ -945,7 +1061,7 @@ LLAMA_CPP_STARTUP_TIMEOUT=120
 LLAMA_CPP_REQUEST_TIMEOUT=600
 ```
 
-Daha çox: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+More: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
 ---
 
@@ -965,7 +1081,8 @@ Options:
   --template NAME         Mission template
   --supervisor ROLE       Supervisor role description
   --worker ROLE           Worker role (repeatable)
-  --web                   Launch web server
+  --web                   Launch web server + UI
+  --serve                 Launch API-first server
   --desktop               Launch desktop war room
 ```
 

@@ -36,27 +36,30 @@ _session_agents: dict[str, Agent] = {}
 _session_lock = threading.Lock()
 _store: SessionStore = None
 _start_time: float = time.time()
+_web_mode: str = "web"
 logger = logging.getLogger("web")
 logger.addHandler(logging.NullHandler())
 
 _VERSION = "2.0.0"
 
 
-def init(config: Config):
-    global _config, _agent, _session_agents, _store, _start_time
+def init(config: Config, mode: str = "web"):
+    global _config, _agent, _session_agents, _store, _start_time, _web_mode
     _config = config
     _agent = _make_agent(config)
     _session_agents = {}
     _start_time = time.time()
+    _web_mode = mode
     db_path = Path(config.agent.memory_dir).parent / "sessions.db"
     _store = SessionStore(db_path)
 
 
-def run_web(config: Config):
-    init(config)
+def run_web(config: Config, *, api_only: bool = False):
+    mode = "serve" if api_only else "web"
+    init(config, mode=mode)
     host = config.web.host or "127.0.0.1"
     port = int(config.web.port or 8080)
-    log_event(logger, logging.INFO, "web_server_starting", host=host, port=port)
+    log_event(logger, logging.INFO, "web_server_starting", host=host, port=port, mode=mode)
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
@@ -143,6 +146,19 @@ async def health():
 
 @app.get("/")
 async def index():
+    if _web_mode == "serve":
+        return JSONResponse(
+            {
+                "service": "ApexForge Swarm API",
+                "mode": "serve",
+                "provider": _config.agent.provider if _config else "",
+                "model": _config.ollama.model if _config else "",
+                "docs": "/docs",
+                "health": "/health",
+                "chat": "/api/chat",
+                "ws": "/ws",
+            }
+        )
     return HTMLResponse((STATIC_DIR / "index.html").read_text())
 
 
@@ -307,6 +323,30 @@ async def run_batch(data: dict):
         multi_agent=use_multi_agent,
     )
     return {"results": results}
+
+
+@app.post("/api/chat")
+async def run_chat(data: dict):
+    message = str(data.get("message", "")).strip()
+    images = data.get("images", []) or []
+    session_id = _safe_name(str(data.get("session_id") or "")).strip()
+    model = str(data.get("model") or "").strip()
+
+    if not message and not images:
+        raise HTTPException(400, "No message or images provided")
+
+    if session_id:
+        agent = _get_session_agent(session_id)
+        result = _run_prompt_to_text(agent, message, images=images)
+        _persist_session(session_id, agent)
+        return {"session_id": session_id, **result}
+
+    cfg = copy.deepcopy(_config)
+    agent = _make_agent(cfg)
+    if model:
+        agent.set_model(model)
+    result = _run_prompt_to_text(agent, message, images=images)
+    return {"session_id": "", **result}
 
 
 # ── Skills CRUD ────────────────────────────────────────────────────────────

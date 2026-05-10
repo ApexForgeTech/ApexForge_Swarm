@@ -8,6 +8,7 @@ ApexForge Swarm
   python main.py -p "question" --plain     — Plain text (pipeable)
   python main.py --parallel-prompt "a" --parallel-prompt "b"
   python main.py --web                     — FastAPI Web UI
+  python main.py --serve                   — API server (no UI root)
   python main.py --desktop                 — Desktop App (Comic UI)
 """
 import sys
@@ -33,7 +34,7 @@ def main():
     from agent.logging_utils import configure_logging
 
     # Determine log mode before parsing so logs are clean from the start
-    _mode = "web" if "--web" in sys.argv or "--desktop" in sys.argv else "cli"
+    _mode = "web" if "--web" in sys.argv or "--desktop" in sys.argv or "--serve" in sys.argv else "cli"
     configure_logging(mode=_mode)
     parser = argparse.ArgumentParser(
         description="ApexForge Swarm",
@@ -43,11 +44,13 @@ Examples:
   python main.py                           # interactive CLI
   python main.py --profile work            # named profile
   python main.py --web                     # web UI
+  python main.py --serve                   # API server
   python main.py --desktop                 # desktop app (Comic UI)
   python main.py -p "ls /tmp"             # direct prompt, exit
         """
     )
     parser.add_argument("--web", action="store_true", help="Start FastAPI web UI")
+    parser.add_argument("--serve", action="store_true", help="Start API server without the web UI root")
     parser.add_argument("--desktop", action="store_true", help="Start desktop app (Comic UI)")
     parser.add_argument("--profile", "-P", default="default", help="Profile name")
     parser.add_argument("--model", help="Override model")
@@ -67,12 +70,17 @@ Examples:
     if args.model:
         _apply_model_override(config, args.model)
 
-    if args.web and args.desktop:
-        parser.error("Use either --web or --desktop, not both.")
+    selected_modes = sum(bool(flag) for flag in (args.web, args.serve, args.desktop))
+    if selected_modes > 1:
+        parser.error("Use only one of --web, --serve, or --desktop.")
 
     if args.web:
         from agent.web.app import run_web
         run_web(config)
+
+    elif args.serve:
+        from agent.web.app import run_web
+        run_web(config, api_only=True)
 
     elif args.desktop:
         from agent.web.desktop import run_desktop
