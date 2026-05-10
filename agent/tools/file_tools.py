@@ -1,5 +1,5 @@
 from pathlib import Path
-from .base import BaseTool
+from .base import BaseTool, strip_code_fence
 
 
 class ReadFileTool(BaseTool):
@@ -42,7 +42,7 @@ class WriteFileTool(BaseTool):
         try:
             p = Path(path).expanduser()
             p.parent.mkdir(parents=True, exist_ok=True)
-            mode = "a" if append else "w"
+            content = strip_code_fence(content)
             p.write_text(content, encoding="utf-8") if not append else open(p, "a").write(content)
             return f"{'Appended to' if append else 'Written to'} {path} ({len(content)} chars)"
         except Exception as e:

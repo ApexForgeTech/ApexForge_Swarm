@@ -219,6 +219,45 @@ OPENAI_COMPAT_MODEL=gpt-4o-mini
 # OPENAI_COMPAT_API_KEY=lm-studio
 ```
 
+### Getting a Model (Without Ollama)
+
+If you use `llama_cpp` as your backend, Ollama is **not needed** to load the main model.
+There are two ways to point llama.cpp at a model:
+
+**Option 1 — Local GGUF file (recommended)**
+
+Download any GGUF from [HuggingFace](https://huggingface.co/models?search=gguf) (e.g. bartowski or lmstudio-community repos), then set the path:
+
+```env
+LLAMA_CPP_MODEL_PATH=/path/to/qwen2.5-3b-instruct-q4_k_m.gguf
+LLAMA_CPP_AUTO_START=true
+```
+
+```bash
+# Example: download with wget
+wget -P ~/.local/share/models \
+  https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf
+```
+
+**Option 2 — HuggingFace model ID (llama-server downloads automatically)**
+
+Set a HuggingFace repo ID instead of a file path — llama-server fetches the model on first start:
+
+```env
+LLAMA_CPP_HF_MODEL=Qwen/Qwen2.5-3B-Instruct-GGUF
+LLAMA_CPP_AUTO_START=true
+```
+
+> This uses llama-server's built-in `-hf` flag. The model is cached locally after the first download.
+
+**Summary:**
+
+```
+Need Ollama?
+  Main LLM inference   → No  (llama.cpp uses GGUF directly)
+  RAG embeddings       → Yes (unless you disable RAG)
+```
+
 ### Recommended Start Paths
 
 ```text
@@ -247,6 +286,7 @@ Want a local service endpoint?        → python main.py --serve
 │ Auto-start     │ No      │ Yes         │ No                   │
 │ Multi-agent    │ Parallel│ Serialized  │ Parallel             │
 │ Local discovery│ Yes     │ Yes         │ No                   │
+│ RAG embeddings │ Built-in│ Needs Ollama│ Needs Ollama         │
 └────────────────┴─────────┴─────────────┴──────────────────────┘
 ```
 
@@ -462,8 +502,22 @@ ApexForge Swarm includes a local vector search system for working with large doc
 
 ```bash
 pip install chromadb pypdf
-ollama pull nomic-embed-text   # local embedding model
+ollama pull nomic-embed-text   # local embedding model (for RAG only)
 ```
+
+> **Important for llama.cpp / openai_compat users:**
+> `nomic-embed-text` is used **only for RAG embeddings**, not for main LLM inference.
+> Even if your main backend is `llama_cpp` or `openai_compat`, you still need a running
+> Ollama instance locally to generate embeddings — unless you configure a different
+> `embed_backend` in `config.yaml`:
+>
+> ```yaml
+> rag:
+>   embed_backend: ollama          # requires local Ollama
+>   embed_model: nomic-embed-text
+> ```
+>
+> If you do not use RAG at all, Ollama is **not required** for any backend.
 
 ### Usage
 

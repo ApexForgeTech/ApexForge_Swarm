@@ -1,5 +1,5 @@
 from typing import Optional
-from .base import BaseTool
+from .base import BaseTool, strip_code_fence
 import os
 
 
@@ -23,6 +23,8 @@ class EditFileTool(BaseTool):
     def execute(self, path: str, action: str, content: Optional[str] = None,
                 find: Optional[str] = None, replace: Optional[str] = None) -> str:
         try:
+            content = strip_code_fence(content)
+            replace = strip_code_fence(replace)
             if action not in {"append", "prepend", "replace"}:
                 return f"Error: invalid action '{action}'"
             if not os.path.exists(path):
