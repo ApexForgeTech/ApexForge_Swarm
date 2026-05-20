@@ -1,4 +1,5 @@
 """FastAPI web server with WebSocket streaming."""
+import asyncio
 import copy
 import json
 import logging
@@ -7,6 +8,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,7 @@ import uvicorn
 from ..config import Config
 from ..core import Agent
 from ..events import error_event, session_event
-from ..llm_backend import detect_available_backends
+from ..llm_backend import configured_llama_cpp_hosts, detect_available_backends
 from ..logging_utils import log_event
 from ..multi_agent import MultiAgentSystem
 from ..runtime import build_agent
@@ -34,37 +36,118 @@ _config: Config = None
 _agent: Agent = None
 _session_agents: dict[str, Agent] = {}
 _session_lock = threading.Lock()
+_session_run_locks: dict[str, threading.RLock] = {}
+_session_run_lock_guard = threading.Lock()
+_session_hosts: dict[str, str] = {}
+_host_cycle_index = 0
+_host_cycle_lock = threading.Lock()
 _store: SessionStore = None
 _start_time: float = time.time()
 _web_mode: str = "web"
+_shutdown_event = threading.Event()
+_active_interrupts: set[threading.Event] = set()
+_active_interrupts_lock = threading.Lock()
 logger = logging.getLogger("web")
 logger.addHandler(logging.NullHandler())
 
 _VERSION = "2.0.0"
 
 
-def init(config: Config, mode: str = "web"):
-    global _config, _agent, _session_agents, _store, _start_time, _web_mode
+def _warmup_model_background(config: Config) -> None:
+    """Model yüklənmə warm-up — server başladıqda arxa planda işləyir.
+    Llama.cpp modeli ilk sorğuda yüklənir (~60 saniyə).
+    Bu funksiya server başladıqda kiçik bir dummy sorğu göndərir ki
+    real sorğular gəldikdə model artıq yüklənmiş olsun."""
+    if not config or config.agent.provider != "llama_cpp":
+        return
+    import requests
+    hosts = configured_llama_cpp_hosts(config)
+    if not hosts:
+        hosts = [f"http://{config.llama_cpp.host}:{getattr(config.llama_cpp, 'port', 8081)}"]
+    model = getattr(config.llama_cpp, 'model_path', '') or getattr(config.ollama, 'model', '')
+    log_event(logger, logging.INFO, "model_warmup_started",
+              hosts=hosts, model=model)
+    for host in hosts:
+        try:
+            # OpenAI-compatible /v1/chat/completions endpoint
+            url = host.rstrip('/') + "/v1/chat/completions"
+            requests.post(
+                url,
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 1,
+                    "temperature": 0,
+                },
+                timeout=180,
+            )
+            log_event(logger, logging.INFO, "model_warmup_done", host=host)
+        except Exception as exc:
+            log_event(logger, logging.WARNING, "model_warmup_failed",
+                      host=host, error=str(exc))
+
+
+def init(config: Config, mode: str = "web", warmup: bool = False):
+    global _config, _agent, _session_agents, _session_run_locks, _session_hosts, _host_cycle_index, _store, _start_time, _web_mode
     _config = config
     _agent = _make_agent(config)
     _session_agents = {}
+    _session_run_locks = {}
+    _session_hosts = {}
+    _host_cycle_index = 0
     _start_time = time.time()
     _web_mode = mode
+    _shutdown_event.clear()
     db_path = Path(config.agent.memory_dir).parent / "sessions.db"
     _store = SessionStore(db_path)
 
+    # Model pre-warm: yalnız --warmup-model flag-i veriləndə işləyir
+    if warmup:
+        warmup_thread = threading.Thread(
+            target=_warmup_model_background,
+            args=(config,),
+            daemon=True,
+            name="model-warmup",
+        )
+        warmup_thread.start()
 
-def run_web(config: Config, *, api_only: bool = False):
+
+def run_web(config: Config, *, api_only: bool = False, warmup: bool = False):
     mode = "serve" if api_only else "web"
-    init(config, mode=mode)
+    init(config, mode=mode, warmup=warmup)
     host = config.web.host or "127.0.0.1"
-    port = int(config.web.port or 8080)
+    port = int(config.web.port or 8090)
     log_event(logger, logging.INFO, "web_server_starting", host=host, port=port, mode=mode)
     uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
 def _make_agent(config: Config) -> Agent:
     return build_agent(config)
+
+
+def _llama_cpp_host_pool() -> list[str]:
+    if not _config or _config.agent.provider != "llama_cpp":
+        return []
+    return configured_llama_cpp_hosts(_config)
+
+
+def _next_llama_cpp_host() -> str | None:
+    global _host_cycle_index
+    hosts = _llama_cpp_host_pool()
+    if len(hosts) <= 1:
+        return None
+    with _host_cycle_lock:
+        host = hosts[_host_cycle_index % len(hosts)]
+        _host_cycle_index += 1
+    return host
+
+
+def _config_for_host(base: Config, host: str | None) -> Config:
+    cfg = copy.deepcopy(base)
+    if host and cfg.agent.provider == "llama_cpp":
+        cfg.llama_cpp.host = host
+        cfg.llama_cpp.hosts = [host]
+    return cfg
 
 
 def _clone_agent_from(base: Agent) -> Agent:
@@ -77,7 +160,12 @@ def _get_session_agent(session_id: str) -> Agent:
     with _session_lock:
         agent = _session_agents.get(session_id)
         if agent is None:
-            agent = _make_agent(copy.deepcopy(_config))
+            host = _session_hosts.get(session_id)
+            if host is None:
+                host = _next_llama_cpp_host()
+                if host:
+                    _session_hosts[session_id] = host
+            agent = _make_agent(_config_for_host(_config, host))
             # Restart-dan sonra history-ni SQLite-dan yüklə
             if _store:
                 saved_messages = _store.load_session(session_id)
@@ -85,6 +173,22 @@ def _get_session_agent(session_id: str) -> Agent:
                     agent.load_messages(saved_messages)
             _session_agents[session_id] = agent
         return agent
+
+
+def _get_session_run_lock(session_id: str) -> threading.RLock:
+    with _session_run_lock_guard:
+        lock = _session_run_locks.get(session_id)
+        if lock is None:
+            lock = threading.RLock()
+            _session_run_locks[session_id] = lock
+        return lock
+
+
+def _drop_session_run_lock(session_id: str) -> None:
+    with _session_run_lock_guard:
+        _session_run_locks.pop(session_id, None)
+    with _session_lock:
+        _session_hosts.pop(session_id, None)
 
 
 def _persist_session(session_id: str, agent: Agent) -> None:
@@ -97,19 +201,88 @@ def _persist_session(session_id: str, agent: Agent) -> None:
 
 
 def _reset_sessions():
-    global _session_agents
+    global _session_agents, _session_run_locks, _session_hosts
     with _session_lock:
         _session_agents = {}
+        _session_hosts = {}
+    with _session_run_lock_guard:
+        _session_run_locks = {}
 
 
-def _run_prompt_to_text(agent: Agent, prompt: str, images: list[str] | None = None) -> dict[str, Any]:
+@contextmanager
+def _managed_interrupt_event():
+    interrupt = threading.Event()
+    if _shutdown_event.is_set():
+        interrupt.set()
+    with _active_interrupts_lock:
+        _active_interrupts.add(interrupt)
+    try:
+        yield interrupt
+    finally:
+        with _active_interrupts_lock:
+            _active_interrupts.discard(interrupt)
+
+
+def _interrupt_all_active_requests() -> None:
+    _shutdown_event.set()
+    with _active_interrupts_lock:
+        events = list(_active_interrupts)
+    for event in events:
+        event.set()
+
+
+def _stop_agent_runtime(agent: Agent | None) -> None:
+    if not agent:
+        return
+    llm = getattr(agent, "llm", None)
+    stop_server = getattr(llm, "_stop_server", None)
+    if callable(stop_server):
+        try:
+            stop_server()
+        except Exception as exc:
+            log_event(logger, logging.WARNING, "runtime_stop_failed", error=str(exc))
+
+
+def _shutdown_runtime() -> None:
+    _interrupt_all_active_requests()
+    agents: list[Agent] = []
+    if _agent is not None:
+        agents.append(_agent)
+    with _session_lock:
+        agents.extend(_session_agents.values())
+    seen: set[int] = set()
+    for agent in agents:
+        key = id(agent)
+        if key in seen:
+            continue
+        seen.add(key)
+        _stop_agent_runtime(agent)
+
+
+def _run_prompt_to_text(
+    agent: Agent,
+    prompt: str,
+    images: list[str] | None = None,
+    interrupt: threading.Event | None = None,
+) -> dict[str, Any]:
     text_parts: list[str] = []
     tool_events: list[dict[str, Any]] = []
-    for event in agent.chat(prompt, images=images):
+    try:
+        stream = agent.chat(prompt, images=images, interrupt=interrupt)
+    except TypeError as exc:
+        if "interrupt" not in str(exc):
+            raise
+        stream = agent.chat(prompt, images=images)
+    for event in stream:
         if event["type"] == "text":
             text_parts.append(event["data"])
         elif event["type"] in {"tool_call", "tool_result", "error"}:
             tool_events.append(event)
+        elif event["type"] == "interrupted":
+            if event.get("data"):
+                text_parts.append(event["data"])
+            tool_events.append(event)
+            break
         elif event["type"] == "done":
             break
     return {"response": "".join(text_parts), "events": tool_events}
@@ -119,10 +292,15 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^\w\-]", "_", name)[:60]
 
 
+@app.on_event("shutdown")
+async def shutdown_runtime():
+    _shutdown_runtime()
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
-async def health():
+def health():
     models: list[str] = []
     backend_ok = False
     try:
@@ -163,7 +341,7 @@ async def index():
 
 
 @app.get("/api/models")
-async def list_models():
+def list_models():
     try:
         return {"models": _agent.available_models()}
     except Exception as e:
@@ -171,7 +349,7 @@ async def list_models():
 
 
 @app.get("/api/config")
-async def get_config():
+def get_config():
     return {
         "provider": _config.agent.provider,
         "model": _config.ollama.model,
@@ -192,7 +370,7 @@ async def get_config():
 
 
 @app.get("/api/backends")
-async def list_backends():
+def list_backends():
     """Mövcud backendlərin statusunu yoxlayır."""
     backends = detect_available_backends(_config)
     active = _config.agent.provider
@@ -200,7 +378,7 @@ async def list_backends():
 
 
 @app.post("/api/config")
-async def update_config(data: dict, _: None = Depends(check_api_key)):
+def update_config(data: dict, _: None = Depends(check_api_key)):
     if "provider" in data:
         _agent.set_provider(data["provider"])
     if "model" in data:
@@ -229,14 +407,14 @@ async def update_config(data: dict, _: None = Depends(check_api_key)):
 
 
 @app.post("/api/clear")
-async def clear_chat(_: None = Depends(check_api_key)):
+def clear_chat(_: None = Depends(check_api_key)):
     _agent.clear()
     _reset_sessions()
     return {"status": "cleared"}
 
 
 @app.post("/api/reload")
-async def reload_memory(_: None = Depends(check_api_key)):
+def reload_memory(_: None = Depends(check_api_key)):
     _agent.reload_memory()
     return {
         "status": "reloaded",
@@ -246,14 +424,14 @@ async def reload_memory(_: None = Depends(check_api_key)):
 
 
 @app.get("/api/export")
-async def export_chat():
+def export_chat():
     md = _agent.export_markdown()
     return PlainTextResponse(md, media_type="text/markdown",
                               headers={"Content-Disposition": "attachment; filename=conversation.md"})
 
 
 @app.post("/api/batch")
-async def run_batch(data: dict):
+def run_batch(data: dict):
     prompts = [str(item).strip() for item in data.get("prompts", []) if str(item).strip()]
     if not prompts:
         raise HTTPException(400, "No prompts provided")
@@ -275,7 +453,7 @@ async def run_batch(data: dict):
     )
 
     def run_one(index: int, prompt: str) -> dict[str, Any]:
-        cfg = copy.deepcopy(_config)
+        cfg = _config_for_host(_config, _next_llama_cpp_host())
         if model:
             temp_agent = _make_agent(cfg)
             temp_agent.set_model(model)
@@ -288,7 +466,7 @@ async def run_batch(data: dict):
             final_answer = ""
             events: list[dict[str, Any]] = []
             fallback_parts: list[str] = []
-            for event in mas.chat(prompt):
+            for event in mas.chat(prompt, interrupt=interrupt_event):
                 if event["type"] in {"agent_chat", "tool_call", "tool_result", "info", "error"}:
                     events.append(event)
                 if event["type"] == "agent_chat" and event.get("data"):
@@ -302,17 +480,18 @@ async def run_batch(data: dict):
         agent = _make_agent(cfg)
         if model:
             agent.set_model(model)
-        result = _run_prompt_to_text(agent, prompt)
+        result = _run_prompt_to_text(agent, prompt, interrupt=interrupt_event)
         return {"index": index, "prompt": prompt, **result}
 
     results: list[dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {
-            executor.submit(run_one, idx, prompt): idx
-            for idx, prompt in enumerate(prompts)
-        }
-        for future in as_completed(future_map):
-            results.append(future.result())
+    with _managed_interrupt_event() as interrupt_event:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(run_one, idx, prompt): idx
+                for idx, prompt in enumerate(prompts)
+            }
+            for future in as_completed(future_map):
+                results.append(future.result())
     results.sort(key=lambda item: item["index"])
     log_event(
         logger,
@@ -326,7 +505,7 @@ async def run_batch(data: dict):
 
 
 @app.post("/api/chat")
-async def run_chat(data: dict):
+def run_chat(data: dict):
     message = str(data.get("message", "")).strip()
     images = data.get("images", []) or []
     session_id = _safe_name(str(data.get("session_id") or "")).strip()
@@ -335,18 +514,20 @@ async def run_chat(data: dict):
     if not message and not images:
         raise HTTPException(400, "No message or images provided")
 
-    if session_id:
-        agent = _get_session_agent(session_id)
-        result = _run_prompt_to_text(agent, message, images=images)
-        _persist_session(session_id, agent)
-        return {"session_id": session_id, **result}
+    with _managed_interrupt_event() as interrupt_event:
+        if session_id:
+            agent = _get_session_agent(session_id)
+            with _get_session_run_lock(session_id):
+                result = _run_prompt_to_text(agent, message, images=images, interrupt=interrupt_event)
+                _persist_session(session_id, agent)
+            return {"session_id": session_id, **result}
 
-    cfg = copy.deepcopy(_config)
-    agent = _make_agent(cfg)
-    if model:
-        agent.set_model(model)
-    result = _run_prompt_to_text(agent, message, images=images)
-    return {"session_id": "", **result}
+        cfg = _config_for_host(_config, _next_llama_cpp_host())
+        agent = _make_agent(cfg)
+        if model:
+            agent.set_model(model)
+        result = _run_prompt_to_text(agent, message, images=images, interrupt=interrupt_event)
+        return {"session_id": "", **result}
 
 
 # ── Skills CRUD ────────────────────────────────────────────────────────────
@@ -500,11 +681,12 @@ async def list_sessions(limit: int = 50):
 
 
 @app.delete("/api/sessions/{session_id}")
-async def delete_session(session_id: str, _: None = Depends(check_api_key)):
+def delete_session(session_id: str, _: None = Depends(check_api_key)):
     if not _store:
         raise HTTPException(503, "Store not initialized")
     with _session_lock:
         _session_agents.pop(session_id, None)
+    _drop_session_run_lock(session_id)
     deleted = _store.delete_session(session_id)
     if not deleted:
         raise HTTPException(404, "Session not found")
@@ -517,6 +699,7 @@ async def delete_session(session_id: str, _: None = Depends(check_api_key)):
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     current_session_id: str = ""
+    current_interrupt_event: threading.Event | None = None
     try:
         while True:
             raw = await ws.receive_text()
@@ -537,11 +720,37 @@ async def websocket_endpoint(ws: WebSocket):
             if not user_message and not images:
                 continue
             agent = _get_session_agent(session_id)
-            for event in agent.chat(user_message, images=images):
-                await ws.send_text(json.dumps(event))
-            # Hər turn-dan sonra session-u persist et
-            _persist_session(session_id, agent)
+            queue: asyncio.Queue[Any] = asyncio.Queue()
+            done_marker = object()
+            loop = asyncio.get_running_loop()
+
+            with _managed_interrupt_event() as interrupt_event:
+                current_interrupt_event = interrupt_event
+                def worker() -> None:
+                    try:
+                        with _get_session_run_lock(session_id):
+                            for event in agent.chat(user_message, images=images, interrupt=interrupt_event):
+                                asyncio.run_coroutine_threadsafe(queue.put(event), loop).result()
+                            _persist_session(session_id, agent)
+                    except Exception as exc:
+                        asyncio.run_coroutine_threadsafe(
+                            queue.put(error_event(str(exc), code="websocket_error")),
+                            loop,
+                        ).result()
+                    finally:
+                        asyncio.run_coroutine_threadsafe(queue.put(done_marker), loop).result()
+
+                threading.Thread(target=worker, daemon=True).start()
+
+                while True:
+                    event = await queue.get()
+                    if event is done_marker:
+                        break
+                    await ws.send_text(json.dumps(event))
+                current_interrupt_event = None
     except WebSocketDisconnect:
+        if current_interrupt_event is not None:
+            current_interrupt_event.set()
         log_event(logger, logging.INFO, "websocket_disconnected",
                   session_id=current_session_id)
     except Exception as e:

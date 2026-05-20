@@ -370,7 +370,7 @@ fetch(url, {{
         elif name == "web_search":
             query = args.get("query", "")
             max_results = int(args.get("max_results", 5))
-            ddg_url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
+            ddg_url = f"https://duckduckgo.com/lite/?q={quote_plus(query)}"
             fallbacks.extend([
                 {"name": "fetch_url", "args": {"url": ddg_url, "max_chars": max(6000, max_results * 1800)}},
                 {"name": "run_shell", "args": {"command": f"curl -L --max-time 20 {shell_quote(ddg_url)} | head -c 12000"}},

@@ -54,6 +54,10 @@ Examples:
     parser.add_argument("--desktop", action="store_true", help="Start desktop app (Comic UI)")
     parser.add_argument("--profile", "-P", default="default", help="Profile name")
     parser.add_argument("--model", help="Override model")
+    parser.add_argument("--warmup-model", action="store_true",
+                        help="(--serve / --web ilə) Server başladıqda modeli arxa planda yüklə. "
+                             "Verilmədikdə lazy-load (əvvəlki davranış). "
+                             "Nümunə: python main.py --serve --warmup-model")
     parser.add_argument("--resume", action="store_true", help="Resume last session")
     parser.add_argument("--session", help="Resume specific session ID")
     parser.add_argument("-p", "--prompt", help="Direct prompt — answer and exit")
@@ -76,11 +80,11 @@ Examples:
 
     if args.web:
         from agent.web.app import run_web
-        run_web(config)
+        run_web(config, warmup=args.warmup_model)
 
     elif args.serve:
         from agent.web.app import run_web
-        run_web(config, api_only=True)
+        run_web(config, api_only=True, warmup=args.warmup_model)
 
     elif args.desktop:
         from agent.web.desktop import run_desktop
