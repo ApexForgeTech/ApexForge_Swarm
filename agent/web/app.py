@@ -288,6 +288,93 @@ def _run_prompt_to_text(
     return {"response": "".join(text_parts), "events": tool_events}
 
 
+def _extract_message_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+                continue
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+        return "\n".join(parts).strip()
+    if content is None:
+        return ""
+    return str(content).strip()
+
+
+def _normalize_chat_messages(raw_messages: Any) -> list[dict[str, str]]:
+    if not isinstance(raw_messages, list):
+        return []
+    normalized: list[dict[str, str]] = []
+    for item in raw_messages:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        if role not in {"system", "user", "assistant"}:
+            continue
+        content = _extract_message_content(item.get("content"))
+        if not content:
+            continue
+        normalized.append({"role": role, "content": content})
+    return normalized
+
+
+def _parse_combined_system_user_prompt(message: str) -> list[dict[str, str]]:
+    text = (message or "").strip()
+    if not text.lower().startswith("system:"):
+        return []
+    match = re.match(r"(?is)^system:\s*(.*?)\n\s*user:\s*(.+)$", text)
+    if not match:
+        return []
+    system_prompt = match.group(1).strip()
+    user_prompt = match.group(2).strip()
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    if user_prompt:
+        messages.append({"role": "user", "content": user_prompt})
+    return messages
+
+
+def _prepare_structured_chat(agent: Agent, data: dict[str, Any]) -> tuple[Agent | None, str]:
+    messages = _normalize_chat_messages(data.get("messages"))
+    if not messages:
+        messages = _parse_combined_system_user_prompt(str(data.get("message") or ""))
+    if not messages:
+        return None, str(data.get("message") or "").strip()
+
+    user_index = next((idx for idx in range(len(messages) - 1, -1, -1) if messages[idx]["role"] == "user"), -1)
+    if user_index < 0:
+        return None, str(data.get("message") or "").strip()
+
+    prompt = messages[user_index]["content"].strip()
+    if not prompt:
+        return None, str(data.get("message") or "").strip()
+
+    prepared = _clone_agent_from(agent)
+    system_messages = [item["content"] for item in messages[: user_index + 1] if item["role"] == "system"]
+    if system_messages:
+        base_system = str(prepared.messages[0].get("content", "") or "")
+        external_system = "\n\n".join(system_messages)
+        prepared.messages[0] = {
+            "role": "system",
+            "content": (
+                f"{base_system}\n\n"
+                "## External System Instructions\n"
+                f"{external_system}"
+            ).strip(),
+        }
+
+    prepared.load_messages(messages[:user_index])
+    return prepared, prompt
+
+
 def _safe_name(name: str) -> str:
     return re.sub(r"[^\w\-]", "_", name)[:60]
 
@@ -518,15 +605,23 @@ def run_chat(data: dict):
         if session_id:
             agent = _get_session_agent(session_id)
             with _get_session_run_lock(session_id):
-                result = _run_prompt_to_text(agent, message, images=images, interrupt=interrupt_event)
-                _persist_session(session_id, agent)
+                structured_agent, structured_prompt = _prepare_structured_chat(agent, data)
+                active_agent = structured_agent or agent
+                active_prompt = structured_prompt if structured_agent else message
+                result = _run_prompt_to_text(active_agent, active_prompt, images=images, interrupt=interrupt_event)
+                if structured_agent is None:
+                    _persist_session(session_id, agent)
+                    return {"session_id": session_id, **result}
             return {"session_id": session_id, **result}
 
         cfg = _config_for_host(_config, _next_llama_cpp_host())
         agent = _make_agent(cfg)
         if model:
             agent.set_model(model)
-        result = _run_prompt_to_text(agent, message, images=images, interrupt=interrupt_event)
+        structured_agent, structured_prompt = _prepare_structured_chat(agent, data)
+        active_agent = structured_agent or agent
+        active_prompt = structured_prompt if structured_agent else message
+        result = _run_prompt_to_text(active_agent, active_prompt, images=images, interrupt=interrupt_event)
         return {"session_id": "", **result}
 
 

@@ -10,7 +10,8 @@ from agent.config import Config
 
 
 class _FakeAgent:
-    def __init__(self):
+    def __init__(self, config=None):
+        self.config = config
         self.messages = []
         self.memory = mock.MagicMock()
         self.memory.list_skills.return_value = []
@@ -34,7 +35,10 @@ class _FakeAgent:
     def reload_memory(self):
         return None
 
-    def chat(self, prompt, images=None):
+    def load_messages(self, messages):
+        self.messages = [{"role": "system", "content": "base-system"}] + list(messages)
+
+    def chat(self, prompt, images=None, interrupt=None):
         yield {"type": "text", "data": f"echo:{prompt}"}
         yield {"type": "done"}
 
@@ -46,8 +50,10 @@ class WebServeModeTests(unittest.TestCase):
         cfg.agent.memory_dir = str(Path(tmpdir) / "memory")
         Path(cfg.agent.memory_dir).mkdir(parents=True, exist_ok=True)
 
-        fake_agent = _FakeAgent()
-        build_agent_patcher = mock.patch("agent.web.app.build_agent", return_value=fake_agent)
+        build_agent_patcher = mock.patch(
+            "agent.web.app.build_agent",
+            side_effect=lambda cfg: _FakeAgent(cfg),
+        )
         store_patcher = mock.patch("agent.web.app.SessionStore")
         build_agent_patcher.start()
         store_patcher.start()
@@ -76,3 +82,19 @@ class WebServeModeTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["response"], "echo:please summarize this")
+
+    def test_api_chat_prefers_structured_messages_over_combined_prompt(self):
+        client = self._client(mode="serve")
+        resp = client.post(
+            "/api/chat",
+            json={
+                "message": "System:\nYou are GhostLine Agent\n\nUser:\nConversation so far:\nUser: salam\n\nUser: netice nedir?",
+                "messages": [
+                    {"role": "system", "content": "You are GhostLine Agent"},
+                    {"role": "user", "content": "Conversation so far:\nUser: salam\n\nUser: netice nedir?"},
+                ],
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["response"], "echo:Conversation so far:\nUser: salam\n\nUser: netice nedir?")
