@@ -376,6 +376,12 @@ class Agent:
     def available_models(self) -> List[str]:
         return self.llm.list_models()
 
+    def pull_model(self, model_id: str) -> Generator[Dict[str, Any], None, None]:
+        yield from self.llm.pull_model(model_id)
+
+    def delete_model(self, model_name: str) -> bool:
+        return self.llm.delete_model(model_name)
+
     def backend_capabilities(self) -> Dict[str, Any]:
         return get_backend_capabilities(self.config).as_dict()
 

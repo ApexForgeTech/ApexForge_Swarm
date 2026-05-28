@@ -60,7 +60,7 @@ TOOL_ICONS = {
 
 SLASH_CMDS = [
     "/help", "/exit", "/quit", "/status", "/clear", "/new",
-    "/model", "/models", "/skills", "/memory", "/reload",
+    "/model", "/models", "/pull", "/del", "/skills", "/memory", "/reload",
     "/sessions", "/resume", "/export", "/history", "/tokens",
     "/profile", "/profiles", "/whoami", "/compact",
 ]
@@ -603,6 +603,43 @@ def _handle_slash(cmd, arg, agent, config, profile, session, profile_name, creds
             active = " [bold green]◀[/bold green]" if m == config.ollama.model else ""
             console.print(f"  [cyan]•[/cyan] {m}{active}")
 
+    elif cmd == "/pull":
+        if not arg:
+            console.print("[yellow]Usage:[/yellow] /pull [MODEL_NAME or GGUF_URL]")
+        else:
+            from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}", justify="right"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                DownloadColumn(),
+                TransferSpeedColumn(),
+                TimeRemainingColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task(f"Pulling {arg}...", total=None)
+                for event in agent.pull_model(arg):
+                    st = event.get("status")
+                    if st == "downloading":
+                        progress.update(task, completed=event.get("completed"), total=event.get("total"))
+                    elif st == "success":
+                        progress.update(task, completed=100, total=100, description=f"[green]✓ Pulled {event.get('model')}")
+                    elif st == "info":
+                        console.print(f"[dim]  {event.get('message')}[/dim]")
+                    elif st == "error":
+                        progress.update(task, description=f"[red]Error: {event.get('error')}")
+                        break
+
+    elif cmd == "/del":
+        if not arg:
+            console.print("[yellow]Usage:[/yellow] /del [MODEL_NAME]")
+        else:
+            if agent.delete_model(arg):
+                console.print(f"[green]✓ Deleted model:[/green] {arg}")
+            else:
+                console.print(f"[red]Failed to delete model:[/red] {arg} (not found or provider error)")
+
     elif cmd == "/skills":
         gs = agent.memory.list_global_skills()
         ps = agent.memory.list_profile_skills()
@@ -719,6 +756,8 @@ def _print_help():
         ("/new", "Start a new session (saves memories first)"),
         ("/model [NAME]", "Show or switch active model"),
         ("/models", "List models from the active backend"),
+        ("/pull [NAME/URL]", "Download a new model"),
+        ("/del [NAME]", "Delete a model"),
         ("/skills", "List loaded skills"),
         ("/memory", "List saved memories"),
         ("/reload", "Reload .md skill/memory files"),

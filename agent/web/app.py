@@ -435,6 +435,27 @@ def list_models():
         return {"models": [], "error": str(e)}
 
 
+@app.post("/api/models/pull")
+def pull_model(data: dict, _: None = Depends(check_api_key)):
+    model_id = str(data.get("model_id", "")).strip()
+    if not model_id:
+        raise HTTPException(400, "model_id is required")
+
+    def generate():
+        for event in _agent.pull_model(model_id):
+            yield json.dumps(event) + "\n"
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
+
+
+@app.delete("/api/models/{name}")
+def delete_model(name: str, _: None = Depends(check_api_key)):
+    if _agent.delete_model(name):
+        return {"status": "deleted", "model": name}
+    raise HTTPException(404, f"Model '{name}' not found or could not be deleted")
+
+
 @app.get("/api/config")
 def get_config():
     return {

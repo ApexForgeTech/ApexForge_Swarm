@@ -132,6 +132,19 @@ class BaseLLMBackend:
     def list_models(self) -> List[str]:
         raise NotImplementedError
 
+    def pull_model(self, model_id: str) -> Generator[Dict[str, Any], None, None]:
+        """
+        Download a model. Yields progress events:
+        {"status": "downloading", "completed": int, "total": int, "speed": float}
+        {"status": "success", "model": str}
+        {"status": "error", "error": str}
+        """
+        raise NotImplementedError
+
+    def delete_model(self, model_name: str) -> bool:
+        """Delete a model. Returns True if successful."""
+        raise NotImplementedError
+
     def capabilities(self) -> BackendCapabilities:
         serialize = os.getenv("APEXFORGE_SERIALIZE_LLM_REQUESTS", "").strip().lower() in {"1", "true", "yes"}
         return BackendCapabilities(
@@ -284,6 +297,34 @@ class OllamaBackend(BaseLLMBackend):
             return [line.split()[0] for line in lines if line.strip()]
         except Exception:
             return []
+
+    def pull_model(self, model_id: str) -> Generator[Dict[str, Any], None, None]:
+        try:
+            client = self._client()
+            for progress in client.pull(model_id, stream=True):
+                status = progress.get("status")
+                completed = progress.get("completed", 0)
+                total = progress.get("total", 0)
+                if status == "success":
+                    yield {"status": "success", "model": model_id}
+                elif total > 0:
+                    yield {"status": "downloading", "completed": completed, "total": total}
+                elif status:
+                    yield {"status": "info", "message": status}
+        except Exception as e:
+            yield {"status": "error", "error": str(e)}
+
+    def delete_model(self, model_name: str) -> bool:
+        try:
+            self._client().delete(model_name)
+            return True
+        except Exception:
+            # Fallback to subprocess
+            try:
+                subprocess.run(["ollama", "rm", model_name], check=True, capture_output=True)
+                return True
+            except Exception:
+                return False
 
     def capabilities(self) -> BackendCapabilities:
         serialize = os.getenv("APEXFORGE_SERIALIZE_LLM_REQUESTS", "").strip().lower() in {"1", "true", "yes"}
@@ -958,6 +999,81 @@ class LlamaCppBackend(BaseLLMBackend):
                     fallback.append(name)
             return fallback
 
+    def pull_model(self, model_id: str) -> Generator[Dict[str, Any], None, None]:
+        import requests
+        model_dir = self._model_directory()
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+        # Simple URL detection
+        if model_id.startswith("http"):
+            url = model_id
+            filename = url.split("/")[-1].split("?")[0]
+        else:
+            # Assume it's a filename or HF path (simplistic resolution)
+            if "/" in model_id and "huggingface.co" not in model_id:
+                # E.g. bartowski/Qwen2.5-3B-Instruct-GGUF -> try to guess a good GGUF
+                # This is a bit speculative without the HF library, but let's try a common pattern
+                # Or just tell the user to provide a direct URL.
+                yield {"status": "info", "message": f"Attempting to resolve HF model: {model_id}"}
+                # For now, let's just use it as a URL if it's a URL, otherwise error out
+                # or maybe the user meant a local filename?
+                yield {"status": "error", "error": "Please provide a direct GGUF download URL for llama_cpp backend."}
+                return
+            else:
+                url = model_id
+                filename = model_id
+
+        if not filename.endswith(".gguf"):
+            filename += ".gguf"
+
+        target = model_dir / filename
+        log_event(logger, logging.INFO, "llama_model_pull_started", url=url, target=str(target))
+
+        try:
+            response = requests.get(url, stream=True, timeout=60)
+            response.raise_for_status()
+            total_size = int(response.headers.get('content-length', 0))
+            completed = 0
+
+            with open(target, "wb") as f:
+                for chunk in response.iter_content(chunk_size=1024 * 1024): # 1MB chunks
+                    if chunk:
+                        f.write(chunk)
+                        completed += len(chunk)
+                        if total_size > 0:
+                            yield {"status": "downloading", "completed": completed, "total": total_size}
+            
+            yield {"status": "success", "model": filename}
+        except Exception as e:
+            if target.exists():
+                target.unlink()
+            yield {"status": "error", "error": str(e)}
+
+    def delete_model(self, model_name: str) -> bool:
+        model_dir = self._model_directory()
+        # 1. Exact match
+        target = model_dir / model_name
+        if target.exists() and target.is_file():
+            target.unlink()
+            return True
+        
+        # 2. Match with .gguf suffix
+        if not model_name.endswith(".gguf"):
+            target = model_dir / (model_name + ".gguf")
+            if target.exists() and target.is_file():
+                target.unlink()
+                return True
+        
+        # 3. Match from local_model_map
+        model_path = self.resolve_model_path(model_name)
+        if model_path:
+            p = Path(model_path)
+            if p.exists() and p.is_file():
+                p.unlink()
+                return True
+        
+        return False
+
     def capabilities(self) -> BackendCapabilities:
         host_pool = configured_llama_cpp_hosts(self.config)
         host_count = len(host_pool)
@@ -1147,6 +1263,12 @@ class OpenAICompatBackend(BaseLLMBackend):
             return sorted(models) or [self._active_model()]
         except Exception:
             return [self._active_model()]
+
+    def pull_model(self, model_id: str) -> Generator[Dict[str, Any], None, None]:
+        yield {"status": "error", "error": f"Pulling models is not supported for provider '{self.capabilities().provider}'."}
+
+    def delete_model(self, model_name: str) -> bool:
+        return False
 
     def capabilities(self) -> BackendCapabilities:
         base = self.config.openai_compat.base_url or ""
