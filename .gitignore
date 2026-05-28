@@ -13,3 +13,4 @@ profiles/*/memory/
 sessions.db
 rag_store/
 test_qovluq/
+*db*
